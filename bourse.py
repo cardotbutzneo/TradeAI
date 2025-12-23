@@ -30,6 +30,7 @@ class Stock:
         if self.quantity >= amount:
             wallet += amount * self.stock_price
             self.quantity -= amount
+            self.purchase_price = None
 
         return wallet
     
@@ -45,7 +46,7 @@ class Market: # market with 1 stock
 
     def print_Market(self):
         for stock in self.action_stock:
-            print(f"id [{stock.ISIN_id}]    price : {stock.stock_price:.2f} $     avalable quantity : {stock.quantity}")
+            print(f"id : [{stock.ISIN_id}]    price : {stock.stock_price:.2f} $     avalable quantity : {stock.quantity}")
 
 
 ## calculus function ##

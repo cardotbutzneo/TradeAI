@@ -1,12 +1,13 @@
 import matplotlib.pyplot as plt
 
-def price_graph(price_list : list, stock_id : str): 
-    
-    x = [t for t in range(len(price_list))]
-    y = [price for price in price_list]
-
-    plt.xlabel("time")
-    plt.ylabel(f"Stock [{stock_id}] price")
+def price_graph(price_lists: list, stock_ids: list):
+    plt.xlabel("Time")
+    plt.ylabel("Stock price")
     plt.grid(True)
-    plt.plot(x,y)
+
+    for prices, stock_id in zip(price_lists, stock_ids):
+        x = list(range(len(prices)))
+        y = prices
+        plt.plot(x, y, label=stock_id)
+
     plt.show()
