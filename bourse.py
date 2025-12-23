@@ -9,7 +9,6 @@ class Stock:
     def __init__(self, ISIN_id : str, stock_price : float, quantity : int):
         self.ISIN_id = ISIN_id
         self.stock_price = stock_price
-        self.purchase_price = None
         self.quantity = quantity
     
     def buy(self, wallet : float, amount : int)->float:
@@ -35,7 +34,7 @@ class Stock:
         return wallet
     
 class Market: # market with 1 stock
-    def __init__(self, action_stock : list, history : dict):
+    def __init__(self, action_stock : list[Stock], history : dict):
         self.action_stock = action_stock
         self.history = history # dict: ISIN -> list of prices
 
@@ -57,7 +56,7 @@ def change_price(stock_history: list, stock: Stock):
         return
 
     mu = stock_history[-1]
-    sigma = mu * 0.02  # 2% volatility
+    sigma = mu * 0.1  # 3.5% volatility
 
     new_price = np.random.normal(mu, sigma)
 

@@ -4,9 +4,9 @@ from calculus import *
 
 class AI:
     
-    def __init__(self, wallet : float, portfolio : dict[str,int], global_value : float, tolerance : float):
-        self.wallet = wallet # {id : [buy_price, quantity],...}
-        self.portfolio = portfolio # dict of all stock bought by AI 
+    def __init__(self, wallet : float, portfolio : dict[str, dict[int,float]], global_value : float, tolerance : float):
+        self.wallet = wallet # current value on the market
+        self.portfolio = portfolio # {id : {"quantity : ","purchase price"},...} 
         self.global_value = global_value # value of the portolio (o(1) complexity)
         self.tolerance = tolerance
 
@@ -14,27 +14,29 @@ class AI:
         for stock in market.action_stock:
             stock: Stock
 
-            if stock.purchase_price is None:
+            if stock.ISIN_id not in self.portfolio:
                 continue
 
-            if stock.stock_price > stock.purchase_price * (1 + self.tolerance): # sell
-                self.wallet = stock.sell(self.wallet, stock.quantity)
-                print(f"L'IA vent - {self.wallet} $")
-            
-            elif stock.stock_price < stock.purchase_price * (1 - self.tolerance): # buy
-                self.wallet = stock.buy(self.wallet,stock.quantity)
-                print(f"L'IA achete - {self.wallet} $")
+            avg_price = self.portfolio[stock.ISIN_id]["avg_price"]
 
-            self.global_value = self.wallet
+            if stock.stock_price > avg_price * (1 + self.tolerance): #sell
+                qty = self.portfolio[stock.ISIN_id]["quantity"]
+                self.wallet = stock.sell(self.wallet, qty)
+                del self.portfolio[stock.ISIN_id]
 
-            for stock in market.action_stock:
-                if stock.ISIN_id in self.portfolio:
-                    self.global_value += stock.stock_price * self.portfolio[stock.ISIN_id]
+            elif stock.stock_price < self.portfolio[stock.ISIN_id]["avg_price"] * (1 - self.tolerance): # buy
+                qty = int(0.3 * self.wallet // stock.stock_price)
+                if qty > 0:
+                    self.wallet = stock.buy(self.wallet, qty)
+                    self.refresh_portfolio(stock.ISIN_id, qty, stock.stock_price)
 
-            self.tolerance = self.risk(
-                market.history[stock.ISIN_id],
-                self.tolerance
-            )
+        self.global_value = self.wallet
+        for stock in market.action_stock:
+            if stock.ISIN_id in self.portfolio:
+                self.global_value += (
+                    stock.stock_price *
+                    self.portfolio[stock.ISIN_id]["quantity"]
+                )       
 
     def risk(self, history: list, tolerance: float) -> float:
         if len(history) <= 20:
@@ -48,7 +50,47 @@ class AI:
         else:
             return tolerance * 1.2
 
-    def print_portfolio(self):
-        for id,value in self.portfolio.items():
-            print(f"ID : {id} - value : {value}")
+    def print_portfolio(self, market: Market):
+        print("=== AI Portfolio ===")
+        total_value = self.wallet
+
+        for stock in market.action_stock:
+            if stock.ISIN_id in self.portfolio:
+                data = self.portfolio[stock.ISIN_id]
+                qty = data["quantity"]
+                avg_price = data["avg_price"]
+
+                current_value = qty * stock.stock_price
+                pnl = (stock.stock_price - avg_price) * qty
+
+                total_value += current_value
+
+                print(
+                    f"{stock.ISIN_id} | "
+                    f"Qty: {qty} | "
+                    f"Avg: {avg_price:.2f} | "
+                    f"Current: {stock.stock_price:.2f} | "
+                    f"PnL: {pnl:+.2f}"
+                )
+
+        print(f"\nWallet: {self.wallet:.2f}")
+        print(f"Total value: {total_value:.2f}")
+
+
+    def refresh_portfolio(self, id: str, quantity: int, price: float):
+        if id not in self.portfolio:
+            # First buy
+            self.portfolio[id] = {
+                "quantity": quantity,
+                "avg_price": price
+            }
+        else:
+            old_q = self.portfolio[id]["quantity"]
+            old_p = self.portfolio[id]["avg_price"]
+
+            new_q = old_q + quantity
+            new_p = (old_q * old_p + quantity * price) / new_q
+
+            self.portfolio[id]["quantity"] = new_q
+            self.portfolio[id]["avg_price"] = new_p
 
