@@ -1,7 +1,7 @@
 #pragma once
 
 #include "main.h"
-
+#include "book_order.h"
 
 struct IndexMap {
     std::string cle;
@@ -21,10 +21,11 @@ struct FinancialNDArray {
 
 
 // Déclarations
-std::unique_ptr<Portfolio>        init_modele(float cash_init, int nb_actions);
-std::unique_ptr<FinancialNDArray> read_file(const std::string&, const std::string&,
-                                            std::vector<IndexMap>&, std::vector<IndexMap>&,
-                                            int&, int&);
+std::unique_ptr<FinancialNDArray> read_file(std::istream& file, const std::string& sep,
+                                            std::vector<IndexMap>& index_actions,
+                                            std::vector<IndexMap>& index_dates,
+                                            std::map<std::string, Action>& liste_des_actions,
+                                            int& nb_actions, int& nb_dates);
 bool  verify_buy(const Portfolio&, float, int);
 bool  verify_sell(const Portfolio&, int, int);
 float get_price_safe(const FinancialNDArray&, int, int, int);

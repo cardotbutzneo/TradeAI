@@ -7,13 +7,39 @@ string get_ticker_name(const vector<IndexMap>& index_actions, int index, int nb_
     return "UNKNOWN";
 }
 
-int main() {
+int main(int argc, char *argv[]) {
+    string mode = "";
+    if (argc == 1) {
+        cerr << "Pas de mode trouvée -- Passage en mode training" << endl;
+        argc = 1;
+        mode = "--train";
+    }
+    else if (argc == 2 && argv) mode = argv[1];
+    
+    if (mode != "--prod" && mode != "--train") {
+        cerr << "Erreur de parametre : veuillez mettre --train ou --prod" << endl;
+        exit(1);
+    } 
+
     vector<IndexMap> index_actions(200);
     vector<IndexMap> index_dates(500);
     int nb_actions = 0, nb_dates = 0;
 
-    string filepath = "../data/historic.csv";
-    auto matrix = read_file(filepath, ",", index_actions, index_dates, nb_actions, nb_dates); /*Récupere l'entierete des actions historique dans un tableau numpy*/
+    std::map<std::string, Action> liste_des_actions;
+
+    std::ifstream file_stream;
+    std::istream* source = nullptr;
+
+    if (mode == "--train") {
+        file_stream.open("../data/historic.csv");
+        if (!file_stream.is_open()) { cerr << "Fichier introuvable\n"; return 1; }
+        source = &file_stream;
+    } else {
+        source = &std::cin; // En mode prod, les données arrivent via stdin
+    }
+
+    auto matrix = read_file(*source, ",", index_actions, index_dates,
+                         liste_des_actions, nb_actions, nb_dates);/*Récupere l'entierete des actions historique dans un tableau numpy*/
     if (!matrix) {
         cerr << "Fichier csv non trouvé ou inexistant" << endl;
         cout << "STOP" << endl; 
@@ -40,49 +66,80 @@ int main() {
 
         // 4. Attente de la décision de Python via l'entrée standard
         string ordre_python;
+        string order;
+        stringstream ss(order);
+        // Remplace tout le bloc de parsing par ceci :
+
         if (getline(cin, ordre_python)) {
-            if (ordre_python == "PASS") {
-                continue; // Rien à faire, on passe au jour suivant
-            }
-            
-            // Exemple d'analyse d'ordre basique : "BUY;AAPL;10"
-            stringstream ss(ordre_python);
-            string action, ticker, qte_str;
-            if (getline(ss, action, ';') && getline(ss, ticker, ';') && getline(ss, qte_str, ';')) {
-                int qte = stoi(qte_str);
-                
-                // On cherche l'index de l'action demandée par Python
+            cerr << "[Cpp Debug] reçu : " << ordre_python << endl;
+
+            if (ordre_python == "PASS") continue;
+
+            // Découpe les ordres séparés par '|'
+            stringstream flux_ordres(ordre_python);
+            string un_ordre;
+
+            while (getline(flux_ordres, un_ordre, '|')) {
+                if (un_ordre.empty()) continue;
+
+                // Découpe chaque ordre en champs séparés par ';'
+                stringstream flux_champs(un_ordre);
+                string action, ticker, qte_str;
+
+                if (!(getline(flux_champs, action, ';') &&
+                    getline(flux_champs, ticker,   ';') &&
+                    getline(flux_champs, qte_str,  ';'))) {
+                    cerr << "[Cpp Debug] ordre mal formé : " << un_ordre << endl;
+                    continue;
+                }
+
+                int qte = 0;
+                try { qte = stoi(qte_str); }
+                catch (...) { cerr << "[Cpp Debug] quantité invalide : " << qte_str << endl; continue; }
+
+                // Recherche de l'action
                 int idx_action = -1;
                 for (int i = 0; i < nb_actions; i++) {
                     if (index_actions[i].cle == ticker) { idx_action = index_actions[i].index; break; }
                 }
+                if (idx_action == -1) {
+                    cerr << "[Cpp Debug] ticker inconnu : " << ticker << endl;
+                    cout << "ACK;REJECT_UNKNOWN_TICKER|";
+                    continue;
+                }
 
-                if (idx_action != -1) {
-                    float prix_action = matrix->data[idx_action * matrix->cols + j];
-                    
-                    if (action == "BUY") {
-                        float cout = prix_action * qte * (1 + FRAIS_COURTAGE_ACHAT);
-                        if (verify_buy(portefeuille, prix_action, qte)) {
-                            portefeuille.cash -= cout;
-                            portefeuille.shares_owned[idx_action] += qte;
-                            std::cout << "ACK;OK;" << portefeuille.cash << std::endl;
-                        } else {
-                            // Refusé par la banque
-                            std::cout << "ACK;REJECT_NO_CASH" << std::endl;
-                        }
-                    } 
-                    else if (action == "SELL") {
-                        if (verify_sell(portefeuille, qte, j)) {
-                            portefeuille.cash += prix_action * qte * (1 - FRAIS_COURTAGE_VENTE);
-                            portefeuille.shares_owned[idx_action] -= qte;
-                            std::cout << "ACK;OK;" << portefeuille.cash << std::endl;
-                        }
-                        } else {
-                            // Refusé par la banque
-                            std::cout << "ACK;REJECT_NO_CASH" << std::endl;
+                float prix_action = matrix->data[idx_action * matrix->cols + j];
+
+                if (action == "BUY") {
+                    float cout_total = prix_action * qte * (1 + FRAIS_COURTAGE_ACHAT);
+                    if (verify_buy(portefeuille, prix_action, qte)) {
+                        Order new_order{ "", OrderType::BUY, (double)prix_action, qte };
+                        liste_des_actions[ticker].order_book.process_order(new_order);
+                        portefeuille.cash -= cout_total;
+                        portefeuille.shares_owned[idx_action] += qte;
+                        cout << "ACK;OK;" << portefeuille.cash << "|";
+                    } else {
+                        cout << "ACK;REJECT_NO_CASH|";
                     }
                 }
+                else if (action == "SELL") {
+                    float cout_total = prix_action * qte * (1 - FRAIS_COURTAGE_VENTE);
+                    if (verify_sell(portefeuille, qte, idx_action)) { // ⚠️ idx_action, pas j
+                        Order new_order{ "", OrderType::SELL, (double)prix_action, qte };
+                        liste_des_actions[ticker].order_book.process_order(new_order);
+                        portefeuille.cash += cout_total;
+                        portefeuille.shares_owned[idx_action] -= qte;
+                        cout << "ACK;OK;" << portefeuille.cash << "|";
+                    } else {
+                        cout << "ACK;REJECT_NO_SHARES|";
+                    }
+                }
+                else {
+                    cerr << "[Cpp Debug] action inconnue : " << action << endl;
+                    cout << "ACK;REJECT_UNKNOWN_ACTION|";
+                }
             }
+            cout << endl;
         }
     }
 
