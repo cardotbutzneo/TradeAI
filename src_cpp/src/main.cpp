@@ -10,7 +10,7 @@ string get_ticker_name(const vector<IndexMap>& index_actions, int index, int nb_
 int main(int argc, char *argv[]) {
     string mode = "";
     if (argc == 1) {
-        cerr << "Pas de mode trouvée -- Passage en mode training" << endl;
+        cerr << "Pas de mode trouvé -- Passage en mode training" << endl;
         argc = 1;
         mode = "--train";
     }
@@ -21,11 +21,12 @@ int main(int argc, char *argv[]) {
         exit(1);
     } 
 
-    vector<IndexMap> index_actions(200);
-    vector<IndexMap> index_dates(500);
+    vector<IndexMap> index_actions(20); // 20 est suffisant mais on peut aller à 200 actions
+    vector<IndexMap> index_dates(1100); // le chiffre peut changer en fonction du nombre de points simulés
     int nb_actions = 0, nb_dates = 0;
 
     std::map<std::string, Action> liste_des_actions;
+    vector<long long> liste_des_quantites;
 
     std::ifstream file_stream;
     std::istream* source = nullptr;
@@ -39,7 +40,7 @@ int main(int argc, char *argv[]) {
     }
 
     auto matrix = read_file(*source, ",", index_actions, index_dates,
-                         liste_des_actions, nb_actions, nb_dates);/*Récupere l'entierete des actions historique dans un tableau numpy*/
+                         liste_des_actions, liste_des_quantites, nb_actions, nb_dates);/*Récupere l'entierete des actions historique dans un tableau numpy*/
     if (!matrix) {
         cerr << "Fichier csv non trouvé ou inexistant" << endl;
         cout << "STOP" << endl; 
@@ -47,19 +48,20 @@ int main(int argc, char *argv[]) {
     }
 
     Portfolio portefeuille;
-    portefeuille.cash = 10000.0f;
+    portefeuille.cash = 1000.0f;
     portefeuille.shares_owned.assign(nb_actions, 0); /*comme calloc()*/
 
     for (int j = 0; j < matrix->cols; j++) {
         string date_actuelle = index_dates[j].cle;
 
         // On envoie à Python les prix de TOUTES les actions pour ce jour J
-        // Format envoyé : TICK;date;ticker1:prix1,ticker2:prix2,...
+        // Format envoyé : TICK;date;ticker1:prix1:volume1,ticker2:prix2:volume2,... -- on envoie pas le hash ca serait trop lourd
         cout << "TICK;" << date_actuelle << ";";
         for (int i = 0; i < matrix->rows; i++) {
             float prix = matrix->data[i * matrix->cols + j];
             if (prix != -1.0f) { // Si l'action a un prix valide ce jour-là
-                cout << get_ticker_name(index_actions, i, nb_actions) << ":" << prix << ",";
+                string ticker = get_ticker_name(index_actions, i, nb_actions);
+                cout << ticker << ":" << prix << ":" << liste_des_quantites[i] << ",";
             }
         }
         cout << endl; // Le Flush obligatoire pour envoyer à Python
@@ -68,7 +70,6 @@ int main(int argc, char *argv[]) {
         string ordre_python;
         string order;
         stringstream ss(order);
-        // Remplace tout le bloc de parsing par ceci :
 
         if (getline(cin, ordre_python)) {
             cerr << "[Cpp Debug] reçu : " << ordre_python << endl;
@@ -93,7 +94,7 @@ int main(int argc, char *argv[]) {
                     continue;
                 }
 
-                int qte = 0;
+                long long qte = 0;
                 try { qte = stoi(qte_str); }
                 catch (...) { cerr << "[Cpp Debug] quantité invalide : " << qte_str << endl; continue; }
 
@@ -111,9 +112,10 @@ int main(int argc, char *argv[]) {
                 float prix_action = matrix->data[idx_action * matrix->cols + j];
 
                 if (action == "BUY") {
-                    float cout_total = prix_action * qte * (1 + FRAIS_COURTAGE_ACHAT);
+                    float penality = liste_des_actions[ticker].return_progressive_malus(qte); // calcule de penalité dans le cas d'une vente/achat trop important
+                    float cout_total = prix_action * qte * (1 + FRAIS_COURTAGE_ACHAT + penality);
                     if (verify_buy(portefeuille, prix_action, qte)) {
-                        Order new_order{ "", OrderType::BUY, (double)prix_action, qte };
+                        Order new_order{ "", "", OrderType::BUY, (double)prix_action, qte };
                         liste_des_actions[ticker].order_book.process_order(new_order);
                         portefeuille.cash -= cout_total;
                         portefeuille.shares_owned[idx_action] += qte;
@@ -123,9 +125,10 @@ int main(int argc, char *argv[]) {
                     }
                 }
                 else if (action == "SELL") {
-                    float cout_total = prix_action * qte * (1 - FRAIS_COURTAGE_VENTE);
+                    float penality = liste_des_actions[ticker].return_progressive_malus(qte);
+                    float cout_total = prix_action * qte * (1 - FRAIS_COURTAGE_VENTE - penality);
                     if (verify_sell(portefeuille, qte, idx_action)) { // ⚠️ idx_action, pas j
-                        Order new_order{ "", OrderType::SELL, (double)prix_action, qte };
+                        Order new_order{ "", "", OrderType::SELL, (double)prix_action, qte };
                         liste_des_actions[ticker].order_book.process_order(new_order);
                         portefeuille.cash += cout_total;
                         portefeuille.shares_owned[idx_action] -= qte;

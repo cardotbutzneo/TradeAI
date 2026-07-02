@@ -1,12 +1,5 @@
 #include "main.h"
 
-struct Order{
-    string symbol;
-    double price;
-    int quantity;
-    bool is_buy;
-};
-
 class BacktestEngine{
     private :
         double cash;

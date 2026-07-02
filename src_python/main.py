@@ -1,8 +1,7 @@
 import sys
 import subprocess
-# On n'importe PLUS ni Market ni Stock de Python !
-from AI import AI 
-from graphic import Ai_graph
+from AI import AI, Stock
+from graphic import price_graph
 
 def run_simulation_stream():
     process = subprocess.Popen(
@@ -12,8 +11,8 @@ def run_simulation_stream():
         text=True
     )
 
-    ai_agent = AI(wallet=1000.0, portfolio={}, tolerance=0.10)
-    ai_history_data = []
+    ai_agent = AI(wallet=1000.0, portfolio={}, tolerance=0.01)
+    stock_dict : dict[str, Stock] = {}
     t = 0
 
     while True:
@@ -26,16 +25,21 @@ def run_simulation_stream():
         if line.startswith("TICK;"):
             parts = line.split(";")
             date = parts[1]
-            current_prices = {}
             for item in parts[2].split(","):
                 if item:
-                    ticker, price = item.split(":")
-                    current_prices[ticker] = float(price)
-                    if ticker not in ai_agent.portfolio:
+                    ticker, price, volume = item.split(":")
+                    if ticker not in stock_dict:
+                        stock_dict[ticker] = Stock(ticker=ticker)
                         ai_agent.portfolio[ticker] = [date, -1, 0]
 
-            all_decision = ai_agent.trade(current_prices)
-            print(f"[Python-Debug] Listes des ordres : {all_decision}", file=sys.stderr)
+                    # Accumule l'historique
+                    stock_dict[ticker].historic_price.append(float(price))
+                    stock_dict[ticker].historic_quantity.append(int(volume))
+                    stock_dict[ticker].total_quantity += int(volume)
+                
+
+            all_decision = ai_agent.trade(stock_dict)
+            #print(f"[Python-Debug] Listes des ordres : {all_decision}", file=sys.stderr)
 
             if all_decision == ["PASS"]:
                 process.stdin.write("PASS\n")
@@ -50,34 +54,41 @@ def run_simulation_stream():
             # On attend exactement 1 ligne d'ACK groupé
             confirmation = process.stdout.readline().strip()
             print(f"[PYTHON-DEBUG] confirmation : {confirmation}", file=sys.stderr)
+            confirm_flag = [False] * (len(confirmation.split("|")) - 1)
 
-            for sub_conf in confirmation.split("|"):
+            for sub_conf, i in zip(confirmation.split("|"), range(len(confirm_flag))):
                 if not sub_conf:
                     continue
                 if sub_conf.startswith("ACK;OK"):
                     nouveau_cash = float(sub_conf.split(";")[2])
                     ai_agent.wallet = nouveau_cash
+                    confirm_flag[i] = True # on actualise les flags pour savoir si l'action a été validé par le cpp 
+
+                    print(f"[Python-Debug] nouveau cash : {ai_agent.wallet}", file=sys.stderr)
                     print(f"[Python] Order ACCEPTED: {sub_conf}", file=sys.stderr)
                 elif sub_conf.startswith("ACK;REJECT"):
                     print(f"[Python] Order REJECTED: {sub_conf}", file=sys.stderr)
 
             # Mise à jour du portfolio après confirmation
-            for decision in all_decision:
+            for idx, decision in enumerate(all_decision):
                 parts_d = decision.split(';')
                 action, stock, quantity = parts_d[0], parts_d[1], int(parts_d[2])
-                if stock in current_prices:
-                    ai_agent.portfolio[stock][1] = current_prices[stock]
-                    ai_agent.portfolio[stock][2] += quantity if action == "BUY" else -quantity
+                if action == "BUY" and idx < len(confirm_flag) and confirm_flag[idx]:
+                    ai_agent.portfolio[stock][2] += quantity
+                    ai_agent.portfolio[stock][1] = stock_dict[stock].current_price
+                elif action == "SELL" and confirm_flag[idx]:
+                    ai_agent.portfolio[stock][2] -= quantity
+                    ai_agent.portfolio[stock][1] = stock_dict[stock].current_price
 
-            ai_agent.refresh(current_prices)
+            ai_agent.refresh(stock_dict)
             print(f"[Python-Debug] Portfolio: {ai_agent.portfolio}", file=sys.stderr)
-            ai_history_data.append([t, ai_agent.global_value])
             t += 1
 
     process.stdin.close()
+    print(f"Différence de taille : {len(stock_dict['GOOG'].historic_price) - len(stock_dict['AMZ'].historic_price)} ({len(stock_dict['GOOG'].historic_price)} - {len(stock_dict['AMZ'].historic_price)})")
     process.wait()
     print("\n[Python] Flux terminé.", file=sys.stderr)
-    Ai_graph(ai_history_data)
+    price_graph(list(stock_dict.values()))
 
 if __name__ == "__main__":
     run_simulation_stream()

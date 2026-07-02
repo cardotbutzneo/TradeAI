@@ -19,6 +19,10 @@ struct FinancialNDArray {
     std::vector<float> data;
 };
 
+struct Client {
+    std::string name;
+    std::string id;
+};
 
 // Déclarations
 std::unique_ptr<FinancialNDArray> read_file(std::istream& file, const std::string& sep,

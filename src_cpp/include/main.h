@@ -12,6 +12,7 @@
 
 #include "bourse.h"
 #include "book_order.h"
+#include "parser.h"
 using namespace std;
 
 constexpr float FRAIS_COURTAGE_ACHAT = 0.001f;
