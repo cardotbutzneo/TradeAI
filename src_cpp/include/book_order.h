@@ -1,7 +1,7 @@
 #pragma once
 
-#include "main.h"
-#include "cmath"
+#include "header.h"
+#include <cmath>
 
 #define CONST_MALUS 0.01 // 1% tous les 10% au dessus du volume échangé
 

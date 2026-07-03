@@ -1,6 +1,7 @@
 #pragma once
 
-#include "main.h"
+#include "header.h"
+#include "bourse.h"
 
 std::unique_ptr<FinancialNDArray> read_file(std::istream& file, const std::string& sep,
                                             std::vector<IndexMap>& index_actions,

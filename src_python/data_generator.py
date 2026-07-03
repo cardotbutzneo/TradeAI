@@ -76,7 +76,7 @@ def graphique(filename, tikers):
 
 if __name__ == "__main__":
     # Génère 150 jours de cotation pour Google
-    all_tiker = ["GOOG", "AMZ"]
+    all_tiker = ["GOOG", "APPL"]
     all_start_price = [142.05, 41.02]
     for tiker, start_price in zip(all_tiker, all_start_price):
         generer_flux_bourse(tiker, prix_initial=start_price, jours=7)

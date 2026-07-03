@@ -1,4 +1,6 @@
-#include "../include/main.h"
+#include "../include/header.h"
+#include "../include/parser.h"
+#include "../include/bourse.h"
 
 string get_ticker_name(const vector<IndexMap>& index_actions, int index, int nb_actions) {
     for (int i = 0; i < nb_actions; i++) {

@@ -1,18 +1,27 @@
 import sys
 import subprocess
-from AI import AI, Stock
+import AI
+from train_AI import NeuralNetwork, build_dataset
 from graphic import price_graph
 
-def run_simulation_stream():
+def run_simulation_stream(mode = ""):
+
+    # Entraînement une fois avant la simulation
+    nn = NeuralNetwork([5, 16, 8, 3])
+    X, y = build_dataset("../data/historic.csv")
+    print(y.sum(axis=0))
+    nn.train(X, y, epochs=100000, learning_rate=0.1)
+
     process = subprocess.Popen(
-        ['./main'], 
+        [f'./main {mode}'] if mode else ['./main'], 
         stdin=subprocess.PIPE,
         stdout=subprocess.PIPE,
         text=True
     )
 
-    ai_agent = AI(wallet=1000.0, portfolio={}, tolerance=0.01)
-    stock_dict : dict[str, Stock] = {}
+    # Puis on passe le réseau entraîné à l'AI
+    ai_agent = AI.AI(wallet=1000.0, portfolio={}, nn=nn, tolerance=0.01)
+    stock_dict : dict[str, AI.Stock] = {}
     t = 0
 
     while True:
@@ -29,7 +38,7 @@ def run_simulation_stream():
                 if item:
                     ticker, price, volume = item.split(":")
                     if ticker not in stock_dict:
-                        stock_dict[ticker] = Stock(ticker=ticker)
+                        stock_dict[ticker] = AI.Stock(ticker=ticker)
                         ai_agent.portfolio[ticker] = [date, -1, 0]
 
                     # Accumule l'historique
@@ -85,10 +94,9 @@ def run_simulation_stream():
             t += 1
 
     process.stdin.close()
-    print(f"Différence de taille : {len(stock_dict['GOOG'].historic_price) - len(stock_dict['AMZ'].historic_price)} ({len(stock_dict['GOOG'].historic_price)} - {len(stock_dict['AMZ'].historic_price)})")
     process.wait()
     print("\n[Python] Flux terminé.", file=sys.stderr)
     price_graph(list(stock_dict.values()))
 
 if __name__ == "__main__":
-    run_simulation_stream()
+    run_simulation_stream(sys.argv[2] if len(sys.argv) >= 3 else "")

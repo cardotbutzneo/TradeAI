@@ -1,4 +1,6 @@
-#include "../include/main.h"
+#include "../include/header.h"
+#include "../include/bourse.h"
+#include "../include/book_order.h"
 
 static int obtenir_index(std::vector<IndexMap>& table, int& taille_actuelle, const std::string& texte) {
     for (int i = 0; i < taille_actuelle; i++)

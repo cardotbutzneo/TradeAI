@@ -1,4 +1,7 @@
-#include "../include/main.h"
+#include "../include/header.h"
+#include "../include/parser.h"
+#include "../include/bourse.h"
+#include "../include/book_order.h"
 
 bool verify_buy(const Portfolio& portfolio, float amount, int quantity) {
     if (amount <= 0 || quantity <= 0) return false;
