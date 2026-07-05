@@ -1,0 +1,4 @@
+### Help file for help ###
+usage: ./run.sh help [command || all]
+
+Print the man of a specific command.

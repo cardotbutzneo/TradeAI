@@ -10,13 +10,16 @@ string get_ticker_name(const vector<IndexMap>& index_actions, int index, int nb_
 }
 
 int main(int argc, char *argv[]) {
+    if (argc != 3) {
+        cerr << "Erreur : not enough or too much argument" << endl;
+        exit(1);
+    }
     string mode = "";
     if (argc == 1) {
-        cerr << "Pas de mode trouvé -- Passage en mode training" << endl;
-        argc = 1;
-        mode = "--train";
+        cerr << "Erreur pas de mode trouvé.\n" << "Arret du programme..." << endl;
+        exit(1);
     }
-    else if (argc == 2 && argv) mode = argv[1];
+    else if (argc == 3 && argv) mode = argv[1];
     
     if (mode != "--prod" && mode != "--train") {
         cerr << "Erreur de parametre : veuillez mettre --train ou --prod" << endl;
@@ -34,7 +37,7 @@ int main(int argc, char *argv[]) {
     std::istream* source = nullptr;
 
     if (mode == "--train") {
-        file_stream.open("../data/historic.csv");
+        file_stream.open(argv[2]);
         if (!file_stream.is_open()) { cerr << "Fichier introuvable\n"; return 1; }
         source = &file_stream;
     } else {

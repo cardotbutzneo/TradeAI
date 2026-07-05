@@ -1,13 +1,50 @@
 import sys
-import time
 import random
 import math
 from datetime import datetime, timedelta
-import numpy as np
 import matplotlib.pyplot as plt
 import hashlib
+import argparse
 
-def generer_flux_bourse(ticker="GOOG", prix_initial=142.05, jours=5, devise="euro"):
+def valider_date(chaine_date):
+    try:
+        return datetime.strptime(chaine_date, "%Y-%m-%d").replace(hour=9, minute=30)
+    except ValueError:
+        raise argparse.ArgumentTypeError(f"Format invalide : '{chaine_date}'. Utilisez AAAA-MM-JJ.")
+
+def parser_arguments():
+    args = {}
+    i = 1
+    while i < len(sys.argv):
+        if i + 1 < len(sys.argv):
+            args[sys.argv[i]] = sys.argv[i+1]
+            i += 2
+        else:
+            i += 1
+
+    # fdate
+    if "fdate" in args:
+        try:
+            fdate = datetime.strptime(args["fdate"], "%Y-%m-%d").replace(hour=9, minute=30)
+        except ValueError:
+            print(f"Format de date invalide : '{args['fdate']}'", file=sys.stderr)
+            exit(1)
+    else:
+        fdate = datetime.now().replace(hour=9, minute=30, second=0, microsecond=0)
+
+    # dur
+    if "dur" in args:
+        try:
+            duration = int(args["dur"])
+        except ValueError:
+            print(f"Durée invalide : '{args['dur']}'", file=sys.stderr)
+            exit(1)
+    else:
+        duration = 7
+
+    return fdate, duration
+
+def generer_flux_bourse(date_actuelle, ticker="GOOG", prix_initial=142.05, jours=7, devise="euro"):
     """
     Simule un historique boursier via un Mouvement Brownien Géométrique.
     Envoie les données sur stdout au format CSV.
@@ -17,14 +54,13 @@ def generer_flux_bourse(ticker="GOOG", prix_initial=142.05, jours=5, devise="eur
     volatility = 0.25 / math.sqrt(252) # 25% de volatilité annuelle
     
     prix_actuel = prix_initial
-    date_actuelle = datetime(2026, 6, 22, 9) # ouverture à 9h00
     intervale = timedelta(minutes=5)
 
     points_par_jour = 102 # génère 102 pts par jour soit toutes les 5 minutes
 
     for j in range(jours):
         for p in range(points_par_jour):
-            if date_actuelle.hour >= 17 and date_actuelle.minute >= 30:
+            if date_actuelle.hour > 17 or (date_actuelle.hour == 17 and date_actuelle.minute >= 0):
                 break # fin de la journée  
             # Hasard distribué selon une loi normale (Gaussienne)
             hasard = random.gauss(0, 1)
@@ -45,39 +81,24 @@ def generer_flux_bourse(ticker="GOOG", prix_initial=142.05, jours=5, devise="eur
             
             date_actuelle += intervale
             
-        date_actuelle += timedelta(hours=15, minutes=30) # reviens à 9h le jour d'apres
+        date_actuelle = date_actuelle.replace(hour=9, minute=30, second=0)
+        date_actuelle += timedelta(days=1) # reviens à 9h le jour d'apres
             # time.sleep(0.1)
 
-def graphique(filename, tikers):
-    """
-    Affiche un graphique des prix à partir d'un fichier CSV.
-    """
-    dates = []
-    prix = []
-    
-    with open(filename, 'r') as f:
-        for line in f:
-            temp = []
-            parts = line.strip().split(',')
-            if len(parts) >= 2:
-                #if True :
-                dates.append(parts[2])  # Date
-                temp.append(float(parts[1]))  # Prix
-    
-    plt.figure(figsize=(10, 5))
-    plt.plot(dates, prix, marker='o')
-    plt.title(f"Historique des prix")
-    #plt.xlabel("Date")
-    plt.ylabel("Prix")
-    plt.xticks(rotation=45)
-    plt.tight_layout()
-    plt.show()
-
-
 if __name__ == "__main__":
-    # Génère 150 jours de cotation pour Google
-    all_tiker = ["GOOG", "APPL"]
+    fdate, duration = parser_arguments()
+
+    if duration <= 0:
+        print("Fatal Error : Duration can't be negative or null", file=sys.stderr)
+        exit(1)
+
+    all_ticker      = ["GOOG", "APPL"]
     all_start_price = [142.05, 41.02]
-    for tiker, start_price in zip(all_tiker, all_start_price):
-        generer_flux_bourse(tiker, prix_initial=start_price, jours=7)
-    
+
+    for ticker, start_price in zip(all_ticker, all_start_price):
+        generer_flux_bourse(
+            date_actuelle=fdate,
+            ticker=ticker,
+            prix_initial=start_price,
+            jours=duration
+        )

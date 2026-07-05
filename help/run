@@ -1,0 +1,9 @@
+## Help file for --train or --prod ## 
+usage : ./run.sh --train [file=...]
+usage : ./run.sh --prod
+
+file : filepath of the input file. Set at "data/historic.csv" buy default.
+
+## Warning ## : --prod use stdin to work. But this implementation isn't ready currently.
+So please use only the --train mode for the moment.
+

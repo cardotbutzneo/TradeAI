@@ -27,7 +27,5 @@ $(OBJ_DIR):
 
 clean:
 	rm -rf $(OBJ_DIR) $(TARGET)
-	> bourse.log
-	> ../data/historic.csv
 
 .PHONY: all clean

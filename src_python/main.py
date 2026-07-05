@@ -4,16 +4,23 @@ import AI
 from train_AI import NeuralNetwork, build_dataset
 from graphic import price_graph
 
-def run_simulation_stream(mode = ""):
+def run_simulation_stream(filepath : str, mode = ""): # valeur a modifier à la main
 
-    # Entraînement une fois avant la simulation
-    nn = NeuralNetwork([5, 16, 8, 3])
-    X, y = build_dataset("../data/historic.csv")
-    print(y.sum(axis=0))
-    nn.train(X, y, epochs=100000, learning_rate=0.1)
+    if mode != "--train" and mode != "--prod":
+        print("Error : none mode find.")
+        print("Please enter a mode : [--train | --dev]")
+        exit(1)
+
+    if mode == "--train":
+        # Entraînement une fois avant la simulation
+        nn = NeuralNetwork([5, 16, 8, 3])
+        X, y = build_dataset(filepath)
+        print(y.sum(axis=0))
+        nn.train(X, y, epochs=10000, learning_rate=0.1)
+    
 
     process = subprocess.Popen(
-        [f'./main {mode}'] if mode else ['./main'], 
+        ['./src_cpp/main', mode, filepath], 
         stdin=subprocess.PIPE,
         stdout=subprocess.PIPE,
         text=True
@@ -21,10 +28,14 @@ def run_simulation_stream(mode = ""):
 
     # Puis on passe le réseau entraîné à l'AI
     ai_agent = AI.AI(wallet=1000.0, portfolio={}, nn=nn, tolerance=0.01)
+    valeur_total : list[float] = []
     stock_dict : dict[str, AI.Stock] = {}
     t = 0
 
     while True:
+        if t % 10 == 0:
+            valeur_total.append(ai_agent.global_value)
+
         line = process.stdout.readline().strip()  # UN seul point de lecture
         if not line or line == "STOP":
             break
@@ -93,10 +104,17 @@ def run_simulation_stream(mode = ""):
             print(f"[Python-Debug] Portfolio: {ai_agent.portfolio}", file=sys.stderr)
             t += 1
 
+    print("-" * 10, "Résultat : ", "-" * 10)
+    print(f"valeur intiale : {valeur_total[0]} | valeur finale : {valeur_total[-1]}")
+    print(f"Variation de la valeur total : {((valeur_total[-1] - valeur_total[0]) / valeur_total[-1] * 100):.3g}%")
+
     process.stdin.close()
     process.wait()
     print("\n[Python] Flux terminé.", file=sys.stderr)
     price_graph(list(stock_dict.values()))
 
 if __name__ == "__main__":
-    run_simulation_stream(sys.argv[2] if len(sys.argv) >= 3 else "")
+    print(sys.argv[1])
+    mode = sys.argv[1]
+    filepath = sys.argv[2]
+    run_simulation_stream(filepath, mode)
