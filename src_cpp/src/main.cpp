@@ -1,6 +1,22 @@
 #include "../include/header.h"
 #include "../include/parser.h"
 #include "../include/bourse.h"
+#include <thread>
+#include <mutex>
+#include <queue>
+
+using namespace std;
+
+std::queue<std::string> ordre_queue;
+std::mutex queue_mutex;
+
+void lire_ordres() {
+    std::string ligne;
+    while (std::getline(std::cin, ligne)) {
+        std::lock_guard<std::mutex> lock(queue_mutex);
+        ordre_queue.push(ligne);
+    }
+}
 
 string get_ticker_name(const vector<IndexMap>& index_actions, int index, int nb_actions) {
     for (int i = 0; i < nb_actions; i++) {
@@ -10,16 +26,22 @@ string get_ticker_name(const vector<IndexMap>& index_actions, int index, int nb_
 }
 
 int main(int argc, char *argv[]) {
-    if (argc != 3) {
-        cerr << "Erreur : not enough or too much argument" << endl;
-        exit(1);
+    cerr << "argv : ";
+    for (int i=0;i<argc;i++){
+        cerr << argv[i] << endl;
     }
+
     string mode = "";
+    bool fast = false;
     if (argc == 1) {
         cerr << "Erreur pas de mode trouvé.\n" << "Arret du programme..." << endl;
         exit(1);
     }
     else if (argc == 3 && argv) mode = argv[1];
+
+    if (argc == 4 && argv[3] == std::string("--fast")) {
+        fast = true;
+    }
     
     if (mode != "--prod" && mode != "--train") {
         cerr << "Erreur de parametre : veuillez mettre --train ou --prod" << endl;
@@ -56,6 +78,14 @@ int main(int argc, char *argv[]) {
     portefeuille.cash = 1000.0f;
     portefeuille.shares_owned.assign(nb_actions, 0); /*comme calloc()*/
 
+    string signal;
+    getline(cin,signal);
+    cerr << "[Debug] Signal : " << signal << endl;
+    if (signal != "START"){ cerr << "Signal invalide\n"; return 1; }
+
+    std::thread t(lire_ordres);
+    t.detach();
+
     for (int j = 0; j < matrix->cols; j++) {
         string date_actuelle = index_dates[j].cle;
 
@@ -63,6 +93,8 @@ int main(int argc, char *argv[]) {
         // Format envoyé : TICK;date;ticker1:prix1:volume1,ticker2:prix2:volume2,... -- on envoie pas le hash ca serait trop lourd
         cout << "TICK;" << date_actuelle << ";";
         for (int i = 0; i < matrix->rows; i++) {
+            if (!fast) std::this_thread::sleep_for(std::chrono::milliseconds(100)); // pause de 100ms à tous les ticks 
+
             float prix = matrix->data[i * matrix->cols + j];
             if (prix != -1.0f) { // Si l'action a un prix valide ce jour-là
                 string ticker = get_ticker_name(index_actions, i, nb_actions);
@@ -71,83 +103,95 @@ int main(int argc, char *argv[]) {
         }
         cout << endl; // Le Flush obligatoire pour envoyer à Python
 
-        // 4. Attente de la décision de Python via l'entrée standard
-        string ordre_python;
-        string order;
-        stringstream ss(order);
+        {
+            std::lock_guard<std::mutex> lock(queue_mutex);
+            while (!ordre_queue.empty()) {
+                std::string ordre = ordre_queue.front();
+                ordre_queue.pop();
+                cerr << "[Cpp Debug] reçu : " << ordre << endl;
 
-        if (getline(cin, ordre_python)) {
-            cerr << "[Cpp Debug] reçu : " << ordre_python << endl;
+                // Parse client_id et reste
+                string client_id, reste;
+                stringstream flux(ordre);
+                getline(flux, client_id, '|');
+                getline(flux, reste);
 
-            if (ordre_python == "PASS") continue;
-
-            // Découpe les ordres séparés par '|'
-            stringstream flux_ordres(ordre_python);
-            string un_ordre;
-
-            while (getline(flux_ordres, un_ordre, '|')) {
-                if (un_ordre.empty()) continue;
-
-                // Découpe chaque ordre en champs séparés par ';'
-                stringstream flux_champs(un_ordre);
-                string action, ticker, qte_str;
-
-                if (!(getline(flux_champs, action, ';') &&
-                    getline(flux_champs, ticker,   ';') &&
-                    getline(flux_champs, qte_str,  ';'))) {
-                    cerr << "[Cpp Debug] ordre mal formé : " << un_ordre << endl;
+                if (reste == "PASS" || reste.empty()) {
+                    cout << "ACK;" << client_id << ";PASS" << endl;
                     continue;
                 }
 
-                long long qte = 0;
-                try { qte = stoi(qte_str); }
-                catch (...) { cerr << "[Cpp Debug] quantité invalide : " << qte_str << endl; continue; }
+                stringstream flux_ordres(reste);
+                string un_ordre;
 
-                // Recherche de l'action
-                int idx_action = -1;
-                for (int i = 0; i < nb_actions; i++) {
-                    if (index_actions[i].cle == ticker) { idx_action = index_actions[i].index; break; }
-                }
-                if (idx_action == -1) {
-                    cerr << "[Cpp Debug] ticker inconnu : " << ticker << endl;
-                    cout << "ACK;REJECT_UNKNOWN_TICKER|";
-                    continue;
-                }
+                while (getline(flux_ordres, un_ordre, '|')) {
+                    if (un_ordre.empty()) continue;
 
-                float prix_action = matrix->data[idx_action * matrix->cols + j];
+                    stringstream flux_champs(un_ordre);
+                    string action, ticker, qte_str;
 
-                if (action == "BUY") {
-                    float penality = liste_des_actions[ticker].return_progressive_malus(qte); // calcule de penalité dans le cas d'une vente/achat trop important
-                    float cout_total = prix_action * qte * (1 + FRAIS_COURTAGE_ACHAT + penality);
-                    if (verify_buy(portefeuille, prix_action, qte)) {
-                        Order new_order{ "", "", OrderType::BUY, (double)prix_action, qte };
-                        liste_des_actions[ticker].order_book.process_order(new_order);
-                        portefeuille.cash -= cout_total;
-                        portefeuille.shares_owned[idx_action] += qte;
-                        cout << "ACK;OK;" << portefeuille.cash << "|";
-                    } else {
-                        cout << "ACK;REJECT_NO_CASH|";
+                    if (!(getline(flux_champs, action,   ';') &&
+                        getline(flux_champs, ticker,   ';') &&
+                        getline(flux_champs, qte_str,  ';'))) {
+                        cerr << "[Cpp Debug] ordre mal formé : " << un_ordre << endl;
+                        cout << "ACK;" << client_id << ";REJECT_MALFORMED|";
+                        continue;
+                    }
+
+                    long long qte = 0;
+                    try { qte = stoll(qte_str); }
+                    catch (...) {
+                        cerr << "[Cpp Debug] quantité invalide : " << qte_str << endl;
+                        cout << "ACK;" << client_id << ";REJECT_INVALID_QTY|";
+                        continue;
+                    }
+
+                    int idx_action = -1;
+                    for (int i = 0; i < nb_actions; i++) {
+                        if (index_actions[i].cle == ticker) {
+                            idx_action = index_actions[i].index;
+                            break;
+                        }
+                    }
+                    if (idx_action == -1) {
+                        cout << "ACK;" << client_id << ";REJECT_UNKNOWN_TICKER|";
+                        continue;
+                    }
+
+                    float prix_action = matrix->data[idx_action * matrix->cols + j];
+
+                    if (action == "BUY") {
+                        float penality   = liste_des_actions[ticker].return_progressive_malus(qte);
+                        float cout_total = prix_action * qte * (1 + FRAIS_COURTAGE_ACHAT + penality);
+                        if (verify_buy(portefeuille, prix_action, qte)) {
+                            Order new_order{ "", "", OrderType::BUY, (double)prix_action, qte };
+                            liste_des_actions[ticker].order_book.process_order(new_order);
+                            portefeuille.cash -= cout_total;
+                            portefeuille.shares_owned[idx_action] += qte;
+                            cout << "ACK;" << client_id << ";OK;" << portefeuille.cash << "|";
+                        } else {
+                            cout << "ACK;" << client_id << ";REJECT_NO_CASH|";
+                        }
+                    }
+                    else if (action == "SELL") {
+                        float penality   = liste_des_actions[ticker].return_progressive_malus(qte);
+                        float cout_total = prix_action * qte * (1 - FRAIS_COURTAGE_VENTE - penality);
+                        if (verify_sell(portefeuille, qte, idx_action)) {
+                            Order new_order{ "", "", OrderType::SELL, (double)prix_action, qte };
+                            liste_des_actions[ticker].order_book.process_order(new_order);
+                            portefeuille.cash += cout_total;
+                            portefeuille.shares_owned[idx_action] -= qte;
+                            cout << "ACK;" << client_id << ";OK;" << portefeuille.cash << "|";
+                        } else {
+                            cout << "ACK;" << client_id << ";REJECT_NO_SHARES|";
+                        }
+                    }
+                    else {
+                        cout << "ACK;" << client_id << ";REJECT_UNKNOWN_ACTION|";
                     }
                 }
-                else if (action == "SELL") {
-                    float penality = liste_des_actions[ticker].return_progressive_malus(qte);
-                    float cout_total = prix_action * qte * (1 - FRAIS_COURTAGE_VENTE - penality);
-                    if (verify_sell(portefeuille, qte, idx_action)) { // ⚠️ idx_action, pas j
-                        Order new_order{ "", "", OrderType::SELL, (double)prix_action, qte };
-                        liste_des_actions[ticker].order_book.process_order(new_order);
-                        portefeuille.cash += cout_total;
-                        portefeuille.shares_owned[idx_action] -= qte;
-                        cout << "ACK;OK;" << portefeuille.cash << "|";
-                    } else {
-                        cout << "ACK;REJECT_NO_SHARES|";
-                    }
-                }
-                else {
-                    cerr << "[Cpp Debug] action inconnue : " << action << endl;
-                    cout << "ACK;REJECT_UNKNOWN_ACTION|";
-                }
+                cout << endl;
             }
-            cout << endl;
         }
     }
 

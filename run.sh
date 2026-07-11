@@ -1,32 +1,17 @@
 #!/bin/bash
 
-# Configuration des chemins vers les scripts Python
+# Configuration des chemins vers les scripts Python et c++
 MAIN_SCRIPT="src_python/main.py"
 GENERATOR_SCRIPT="src_python/data_generator.py"
-HELP_DIRECTORY="help/*"
 
 # Fonction d'aide
 usage() {
-    local mode=${1:-"all"}
-    case "$mode" in
-        "generate")
-            if [ -f "help/generate" ]; then
-                cat "help/generate"
-            else
-                echo "Usage: $0 [--generate [file=...] [fdate=...] [ldate=...]]"
-            fi
-            ;;
-        "run")
-        ;;
-        *)
-            echo "Usage :"
-            echo "  $0 help [command_name || all]"
-            echo "  $0 --generate [file=...] [fdate=...] [ldate=...]"
-            echo "  $0 --train [file_path]"
-            echo "  $0 --prod"
-            echo "  $0 --clean"
-            ;;
-    esac
+    echo "Usage :"
+    echo "  $0 help [command_name || all]"
+    echo "  $0 --generate [file=...] [fdate=...] [dur=...]"
+    echo "  $0 --train [file_path] [fast=--fast]"
+    echo "  $0 --prod"
+    echo "  $0 --clean"
     exit 1
 }
 
@@ -36,14 +21,14 @@ help() {
         usage
     fi
 
-    if [[ $1 == "" ]]; then
-        echo "help() do not support null input."
-        echo "usage: help [command || all]"
-        echo "use 'run' for help about --train or --prod" 
+    local mode=$1
+    if [[ -z "$mode" ]]; then
+        echo "Error : help() does not support null input."
+        echo "Usage: $0 help [command || all]"
+        echo "Use 'train' for help about --train or --prod" 
         exit 1
     fi
 
-    local mode=$1
     if [[ "$mode" == "all" ]]; then
         if [ -d "help" ]; then
             tail -n +1 help/*
@@ -53,12 +38,18 @@ help() {
     elif [[ "$mode" == "usage" ]]; then
         usage
     else
+        mode+=".md"
         if [ -f "help/$mode" ]; then
             tail -n +1 "help/$mode"
+            echo ""
         else
             echo "Error : No help found for command '$mode'"
-            echo "List of available command : "
-            ls "help/"
+            echo "List of available help commands : "
+            if [ -d "help" ]; then
+                ls "help/"
+            else
+                echo "  (No 'help/' directory found)"
+            fi
             exit 1
         fi
     fi
@@ -104,36 +95,47 @@ case "$COMMAND" in
     --train|--prod)
         STDOUT="src_cpp/bourse.log"
         FILE=${1:-""}
+        FAST=${2:-""} 
         
         if [[ "$COMMAND" == "--train" ]]; then
             if [ -z "$FILE" ] || [ ! -f "$FILE" ]; then
                 echo "Error: '${FILE:-"NULL"}': No such file or directory"
-                echo "Warnig: please make sur that every file needed for the projet exist"
+                echo "Warning: please make sure that every file needed for the project exists."
                 exit 1
             fi
             if [ ! -s "$FILE" ]; then
                 echo "Warning: '$FILE' is empty."
-                echo "Do you still want to continue ? [y/n]"
+                printf "Do you still want to continue? [y/N]: "
                 read -r conf
-                if [[ "$conf" == "n" ]] || [[ -z "$conf" ]] ; then
-                    echo "End of the programm..."
+                if [[ "$conf" != "y" ]] && [[ "$conf" != "Y" ]]; then
+                    echo "End of the program..."
                     exit 0
                 fi  
             fi
         fi
         
         echo "Compiling C++ Engine..."
-        cd "src_cpp/" || exit 1
-        make
-        cd ".." || exit 1
+        if [ -d "src_cpp" ]; then
+            cd "src_cpp/" || exit 1
+            make
+            if [ $? -ne 0 ]; then
+                echo "Error: 'make' failed to compile C++ engine. End of the program..."
+                exit 1
+            fi
+            cd ".." || exit 1
+        else
+            echo "Error: 'src_cpp/' directory not found."
+            exit 1
+        fi
         
+        # Sauvegarde d'état propre (Efface puis ajoute)
         echo "$STDOUT" > .last_run
-        if [ -n "$FILE" ] && [ "$FILE" != "null" ]; then
+        if [ -n "$FILE" ]; then
             echo "$FILE" >> .last_run
         fi
         
         echo "Running simulation..."
-        python3 "$MAIN_SCRIPT" "$COMMAND" "$FILE" 2> "$STDOUT"
+        python3 "$MAIN_SCRIPT" "$COMMAND" "$FILE" "$FAST" 2> "$STDOUT"
         ;;
 
     --generate)
@@ -150,21 +152,19 @@ case "$COMMAND" in
                     ;;
                 dur=*)
                     PY_ARGS+=("dur" "${1#*=}")
-                ;;
+                    ;;
                 *)
-                    echo "Unknow argument for --generate : $1"
-                    usage "generate"
+                    echo "Unknown argument for --generate : $1"
+                    usage
                     ;;
             esac
             shift 
         done
 
         mkdir -p "$(dirname "$OUT_FILE")"
-
         echo "$OUT_FILE" > .last_run
 
         echo "Generating market data into $OUT_FILE..."
-        echo "python3 "$GENERATOR_SCRIPT" "${PY_ARGS[@]}" 1> "$OUT_FILE""
         python3 "$GENERATOR_SCRIPT" "${PY_ARGS[@]}" 1> "$OUT_FILE"
         ;;
 

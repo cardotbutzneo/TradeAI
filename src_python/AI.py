@@ -3,6 +3,9 @@ import sys
 from random import randint
 import train_AI
 
+"""AI.py — Contains the AI class and related classes for stock trading simulation.
+- Stock: Represents a stock with its ticker, historical prices, and quantities."""
+
 # currency detect by the programm
 ALLOWED_CURRENCY = ["USD", "EUR", "GBD", "JPY"]
 
@@ -92,7 +95,7 @@ class AI:
         """Analyze market status and execute buy/sell decisions. """
         decisions = []
         for ticker, stock in stock_list.items():
-            decision = self.strat(stock)
+            decision = strategie(stock)
             if decision != "PASS" and decision != None:
                 decisions.append(decision)
         return decisions if decisions else ["PASS"]

@@ -6,6 +6,11 @@ import matplotlib.pyplot as plt
 import hashlib
 import argparse
 
+"""data_generator.py — Simulates stock market data using Geometric Brownian Motion.
+- valider_date(chaine_date): Validates and converts a date string to a datetime object
+- parser_arguments(): Parses command-line arguments for start date and duration
+- generer_flux_bourse(date_actuelle, ticker, prix_initial, jours, devise): Generates stock market data for a given ticker and writes it to stdout in CSV format"""
+
 def valider_date(chaine_date):
     try:
         return datetime.strptime(chaine_date, "%Y-%m-%d").replace(hour=9, minute=30)

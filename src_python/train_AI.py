@@ -3,6 +3,11 @@ import numpy as np
 import AI
 from datetime import datetime
 
+"""train_AI.py — offline training of the AI on historical data.
+- NeuralNetwork: Implements a simple feedforward neural network with ReLU and Softmax activations.
+- build_dataset(filepath: str): Reads historical stock data from a CSV file and constructs a dataset for training the neural network.
+"""
+
 class NeuralNetwork:
     def __init__(self, layer_sizes: list[int]):
         # layer_sizes = [nb_entrées, nb_neurones_couche1, ..., nb_sorties]
