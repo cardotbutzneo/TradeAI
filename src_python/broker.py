@@ -53,13 +53,16 @@ async def handler_ordres(websocket):
         clients_connectes.pop(agent_id, None)
         ack_queues.pop(agent_id, None)
 
-async def broker(cpp_path="./src_cpp/main", mode="--train", fast=False,
+async def broker(cpp_path="./src_cpp/main", mode="--train", fast="",
                  file="", nb_clients=1):
     global process, clients_attendus
     clients_attendus = nb_clients
 
     args = [cpp_path, mode]
     if file: args.append(file)
+    args.append(fast)
+
+    print(f"[arg] : {args}", file=sys.stderr)
 
     process = subprocess.Popen(args, stdin=subprocess.PIPE,
                                 stdout=subprocess.PIPE, text=True)

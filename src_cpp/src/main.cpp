@@ -26,10 +26,6 @@ string get_ticker_name(const vector<IndexMap>& index_actions, int index, int nb_
 }
 
 int main(int argc, char *argv[]) {
-    cerr << "argv : ";
-    for (int i=0;i<argc;i++){
-        cerr << argv[i] << endl;
-    }
 
     string mode = "";
     bool fast = false;
@@ -37,11 +33,13 @@ int main(int argc, char *argv[]) {
         cerr << "Erreur pas de mode trouvé.\n" << "Arret du programme..." << endl;
         exit(1);
     }
-    else if (argc == 3 && argv) mode = argv[1];
+    else if (argc >= 3) mode = argv[1];
 
     if (argc == 4 && argv[3] == std::string("--fast")) {
         fast = true;
     }
+
+    cerr << mode << endl;
     
     if (mode != "--prod" && mode != "--train") {
         cerr << "Erreur de parametre : veuillez mettre --train ou --prod" << endl;

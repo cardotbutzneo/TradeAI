@@ -16,7 +16,7 @@ async def main():
     mode = sys.argv[1] if len(sys.argv) > 1 else "--train"
     file = sys.argv[2] if len(sys.argv) > 2 else ""
     fast_str = sys.argv[3] if len(sys.argv) > 3 else ""
-    fast = True if fast_str == "--fast" else False
+    print(f"[fast] : {fast_str}", file=sys.stderr)
 
     # nn = NeuralNetwork([5, 16, 8, 3])
     # X, y = build_dataset("data/historic.csv")
@@ -26,7 +26,7 @@ async def main():
     print("[Main] Démarrage broker...", file=sys.stderr)
     print("[Main] Démarrage clients...", file=sys.stderr)
     await asyncio.gather(
-        broker(mode=mode, file=file, fast=fast, nb_clients=3),
+        broker(mode=mode, file=file, fast=fast_str, nb_clients=3),
         run_client(PORT_ECOUTE_SERVEUR, PORT_ECOUTE_CLIENT, AI(wallet=1000, portfolio={}, nn=None, tolerance=0.01), "agent1"),
         run_client(PORT_ECOUTE_SERVEUR, PORT_ECOUTE_CLIENT, AI(wallet=2000, portfolio={}, nn=None, tolerance=0.10), "agent2"),
         run_client(PORT_ECOUTE_SERVEUR, PORT_ECOUTE_CLIENT, AI(wallet=500,  portfolio={}, nn=None, tolerance=0.20), "agent3"),
