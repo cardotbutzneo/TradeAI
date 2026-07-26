@@ -1,0 +1,4 @@
+# TradeAI dashboard dependencies
+# Install with: pip install -r dashboard/requirements.txt
+dash>=2.16
+plotly>=5.20
