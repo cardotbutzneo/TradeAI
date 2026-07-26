@@ -91,8 +91,9 @@ class AI:
         else : return f"SELL;{stock.ticker};{self.portfolio[stock.ticker][2]}"
 
 
-    def trade(self, stock_list : dict[str, Stock], strategie = strat1):
+    def trade(self, stock_list : dict[str, Stock], strategie = None):
         """Analyze market status and execute buy/sell decisions. """
+        strategie = strategie if strategie is not None else self.strat1
         decisions = []
         for ticker, stock in stock_list.items():
             decision = strategie(stock)

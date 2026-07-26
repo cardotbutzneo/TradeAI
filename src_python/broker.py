@@ -67,12 +67,11 @@ async def broker(cpp_path="./src_cpp/main", mode="--train", fast="",
     process = subprocess.Popen(args, stdin=subprocess.PIPE,
                                 stdout=subprocess.PIPE, text=True)
 
-    async with websockets.serve(handler_ordres, "127.0.0.1", 8765), \
+    async with websockets.serve(handler_ticks, "127.0.0.1", 8765), \
                websockets.serve(handler_ordres, "127.0.0.1", 8766):
         print(f"[Broker] Attente de {nb_clients} client(s)...", file=sys.stderr)
         await clients_prets.wait()
         print(f"[Broker] Tous les clients connectés, démarrage...", file=sys.stderr)
-        await clients_prets.wait()
         print("[Broker] Envoi START au C++", file=sys.stderr)
         process.stdin.write("START\n")
         process.stdin.flush()
