@@ -1,0 +1,6 @@
+# TradeAI — Python dependencies
+# Install with: pip install -r requirements.txt
+
+numpy
+matplotlib
+websockets
