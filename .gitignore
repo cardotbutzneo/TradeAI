@@ -1,2 +1,7 @@
 .venv/
 __pycache__/
+.last_run
+data/
+obj/
+main
+bourse.log
