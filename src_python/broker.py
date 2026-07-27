@@ -3,6 +3,8 @@ import subprocess
 import sys
 import websockets
 
+from utils.logger import logger
+
 """broker.py — WebSocket broker for the trading simulation.
 - handler_ticks(websocket): Handles incoming tick data from the C++ process and broadcasts it to connected clients.
 - handler_ordres(websocket): Handles incoming orders from clients and forwards them to the C++ process, then sends back acknowledgments.
@@ -31,7 +33,7 @@ async def handler_ordres(websocket):
     ack_queues[agent_id] = asyncio.Queue()
 
     await websocket.send(f"REGISTERED;{agent_id}")
-    print(f"[Broker] {agent_id} enregistré ({len(clients_connectes)}/{clients_attendus})", file=sys.stderr)
+    logger.info("Broker", f"{agent_id} enregistré ({len(clients_connectes)}/{clients_attendus})")
 
     # Signal quand tous les clients sont connectés
     if len(clients_connectes) >= clients_attendus:
@@ -62,18 +64,18 @@ async def broker(cpp_path="./src_cpp/main", mode="--train", fast="",
     if file: args.append(file)
     args.append(fast)
 
-    print(f"[arg] : {args}", file=sys.stderr)
+    logger.info("Broker", f"{args}")
 
     process = subprocess.Popen(args, stdin=subprocess.PIPE,
                                 stdout=subprocess.PIPE, text=True)
 
-    async with websockets.serve(handler_ordres, "127.0.0.1", 8765), \
+    async with websockets.serve(handler_ticks, "127.0.0.1", 8765), \
                websockets.serve(handler_ordres, "127.0.0.1", 8766):
-        print(f"[Broker] Attente de {nb_clients} client(s)...", file=sys.stderr)
+        logger.info("Broker", f"Attente de {nb_clients} client(s)...")
         await clients_prets.wait()
-        print(f"[Broker] Tous les clients connectés, démarrage...", file=sys.stderr)
+        logger.debug("Broker", f"Tous les clients connectés, démarrage...")
         await clients_prets.wait()
-        print("[Broker] Envoi START au C++", file=sys.stderr)
+        logger.debug("Broker", "Envoi START au C++")
         process.stdin.write("START\n")
         process.stdin.flush()
         await lire_cpp()
@@ -87,7 +89,7 @@ async def lire_cpp():
     while True:
         line = await loop.run_in_executor(None, process.stdout.readline)
         line = line.strip()
-        print(f"[Broker] reçu C++ : '{line}'", file=sys.stderr)
+        logger.debug("Broker", f"reçu C++ : '{line}'")
 
         if not line or line == "STOP":
             # Prévient tous les clients
@@ -111,4 +113,4 @@ async def lire_cpp():
                 if target_id in ack_queues:
                     await ack_queues[target_id].put(sub_ack)
                 else:
-                    print(f"[Broker] ACK pour client inconnu : {target_id}", file=sys.stderr)
+                    logger.info("Broker", f"ACK pour client inconnu : {target_id}")

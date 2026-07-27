@@ -4,6 +4,21 @@
 MAIN_SCRIPT="src_python/main.py"
 GENERATOR_SCRIPT="src_python/data_generator.py"
 
+SETTINGS_DIR="config/"
+SETTINGS_FILE="settings.json"
+
+if [ -f "${SETTINGS_DIR}${SETTINGS_FILE}" ]; then
+    LOG_OUTPUT=$(python3 -c '
+import json
+with open("config/settings.json") as f:
+    data = json.load(f)
+    print(data.get("output-file"))
+        ')
+else
+    LOG_OUTPUT="logs/simulation.log"
+fi
+
+
 # Fonction d'aide
 usage() {
     echo "Usage :"
@@ -64,12 +79,30 @@ fi
 COMMAND=$1
 shift
 
+if [ ! -f "${SETTINGS_DIR}${SETTINGS_FILE}" ]; then
+
+    mkdir -p "$SETTINGS_DIR"
+    cat <<'EOF' > "${SETTINGS_DIR}/${SETTINGS_FILE}"
+{
+    "debug-mode": false,
+    "output-file" : "logs/simulation.log",
+    "error-file" : "logs/error.log"
+}
+EOF
+
+fi
+
 case "$COMMAND" in
     help)
         help "${1:-""}"
         ;;
         
     --clean)
+        if [ ! -z $1 ] && [ $1 == "all" ]; then
+                echo "Nettoyage du dossier de parametre..."
+                rm -r config/ > /dev/null
+        fi
+
         echo "Cleaning C++ binaries..."
         if [ -d "src_cpp" ]; then
             cd "src_cpp/" || exit 1
@@ -86,6 +119,7 @@ case "$COMMAND" in
                 fi
             done < .last_run
             rm .last_run
+
             echo "Project successfully cleaned!"
         else
             echo "Nothing to clean : all done."
@@ -93,7 +127,14 @@ case "$COMMAND" in
         ;;
         
     --train|--prod)
-        STDOUT="src_cpp/bourse.log"
+        STDOUT="logs/error.log"
+        if [ ! -d "logs/" ]; then
+            mkdir "logs"
+        fi
+        if [ ! -f $STDOUT ]; then
+            touch $STDOUT
+        fi
+
         FILE=${1:-""}
         FAST=${2:-""} 
         
@@ -131,6 +172,7 @@ case "$COMMAND" in
         # Sauvegarde d'état propre (Efface puis ajoute)
         echo "$STDOUT" > .last_run
         if [ -n "$FILE" ]; then
+            echo "logs/simulation.log" >> .last_run
             echo "$FILE" >> .last_run
         fi
         
