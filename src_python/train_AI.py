@@ -1,7 +1,10 @@
+from __future__ import annotations
+
 import sys
 import numpy as np
-import AI
 from datetime import datetime
+
+from . import AI
 
 """train_AI.py — offline training of the AI on historical data.
 - NeuralNetwork: Implements a simple feedforward neural network with ReLU and Softmax activations.
@@ -56,7 +59,7 @@ class NeuralNetwork:
         grad_biases  = [None] * len(self.biases)
 
         # Gradient de la perte (cross-entropy + softmax combinés)
-        delta = self.activations[-1] - y_true  # très simple grâce au softmax
+        delta = self.activations[-1] - y_true 
 
         for i in reversed(range(len(self.weights))):
             grad_weights[i] = self.activations[i].T @ delta / m
