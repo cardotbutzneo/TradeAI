@@ -1,6 +1,7 @@
 #include "../include/header.h"
 #include "../include/parser.h"
 #include "../include/bourse.h"
+#include "../include/log.h"
 #include <thread>
 #include <mutex>
 #include <queue>
@@ -26,11 +27,12 @@ string get_ticker_name(const vector<IndexMap>& index_actions, int index, int nb_
 }
 
 int main(int argc, char *argv[]) {
+    Logger logger;
 
     string mode = "";
     bool fast = false;
     if (argc == 1) {
-        cerr << "Erreur pas de mode trouvé.\n" << "Arret du programme..." << endl;
+        logger.error("Main", "Erreur pas de mode trouvé.\n Arret du programme...");
         exit(1);
     }
     else if (argc >= 3) mode = argv[1];
@@ -39,10 +41,10 @@ int main(int argc, char *argv[]) {
         fast = true;
     }
 
-    cerr << mode << endl;
+    logger.debug("Main", "Mode: " + mode);
     
     if (mode != "--prod" && mode != "--train") {
-        cerr << "Erreur de parametre : veuillez mettre --train ou --prod" << endl;
+        logger.error("Main", "Erreur de parametre : veuillez mettre --train ou --prod");
         exit(1);
     } 
 
@@ -58,7 +60,7 @@ int main(int argc, char *argv[]) {
 
     if (mode == "--train") {
         file_stream.open(argv[2]);
-        if (!file_stream.is_open()) { cerr << "Fichier introuvable\n"; return 1; }
+        if (!file_stream.is_open()) { logger.error("Main", "Fichier introuvable\n"); return 1; }
         source = &file_stream;
     } else {
         source = &std::cin; // En mode prod, les données arrivent via stdin
@@ -67,7 +69,7 @@ int main(int argc, char *argv[]) {
     auto matrix = read_file(*source, ",", index_actions, index_dates,
                          liste_des_actions, liste_des_quantites, nb_actions, nb_dates);/*Récupere l'entierete des actions historique dans un tableau numpy*/
     if (!matrix) {
-        cerr << "Fichier csv non trouvé ou inexistant" << endl;
+        logger.error("Main", "Fichier csv non trouvé ou inexistant");
         cout << "STOP" << endl; 
         return -1;
     }
@@ -78,8 +80,8 @@ int main(int argc, char *argv[]) {
 
     string signal;
     getline(cin,signal);
-    cerr << "[Debug] Signal : " << signal << endl;
-    if (signal != "START"){ cerr << "Signal invalide\n"; return 1; }
+    logger.debug("Main", "Signal : " + signal);
+    if (signal != "START"){ logger.error("Main", "Signal invalide\n"); return 1; }
 
     std::thread t(lire_ordres);
     t.detach();
@@ -106,7 +108,7 @@ int main(int argc, char *argv[]) {
             while (!ordre_queue.empty()) {
                 std::string ordre = ordre_queue.front();
                 ordre_queue.pop();
-                cerr << "[Cpp Debug] reçu : " << ordre << endl;
+                logger.debug("Main", "[Cpp Debug] reçu : " + ordre);
 
                 // Parse client_id et reste
                 string client_id, reste;
@@ -131,7 +133,7 @@ int main(int argc, char *argv[]) {
                     if (!(getline(flux_champs, action,   ';') &&
                         getline(flux_champs, ticker,   ';') &&
                         getline(flux_champs, qte_str,  ';'))) {
-                        cerr << "[Cpp Debug] ordre mal formé : " << un_ordre << endl;
+                        logger.debug("Main", "[Cpp Debug] ordre mal formé : " + un_ordre);
                         cout << "ACK;" << client_id << ";REJECT_MALFORMED|";
                         continue;
                     }
@@ -139,7 +141,7 @@ int main(int argc, char *argv[]) {
                     long long qte = 0;
                     try { qte = stoll(qte_str); }
                     catch (...) {
-                        cerr << "[Cpp Debug] quantité invalide : " << qte_str << endl;
+                        logger.debug("Main", "[Cpp Debug] quantité invalide : " + qte_str);
                         cout << "ACK;" << client_id << ";REJECT_INVALID_QTY|";
                         continue;
                     }
