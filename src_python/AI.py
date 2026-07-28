@@ -95,7 +95,7 @@ class AI:
         """Analyze market status and execute buy/sell decisions. """
         decisions = []
         for ticker, stock in stock_list.items():
-            decision = strategie(stock)
+            decision = strategie(self, stock)
             if decision != "PASS" and decision != None:
                 decisions.append(decision)
         return decisions if decisions else ["PASS"]

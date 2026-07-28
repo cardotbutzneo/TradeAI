@@ -3,6 +3,8 @@ import sys
 import websockets
 from AI import Stock, AI
 
+from utils.logger import logger
+
 """FIle containing the function to run a client that connects to the broker and receives ticks and sends orders.
 - run_client(url_tick: str, url_ordre: str, agent: AI, agent_id: str): Connects to the broker and handles ticks and orders for a given agent.
 """
@@ -20,9 +22,9 @@ async def run_client(url_tick: str, url_ordre: str,
         confirmation = await ws_ordre.recv()  # attend la confirmation du broker
 
         if confirmation == f"REGISTERED;{agent_id}":
-            print(f"[{agent_id}] Enregistré avec succès", file=sys.stderr)
+            logger.info(f"{agent_id}", f"Enregistré avec succès")
         else:
-            print(f"[{agent_id}] Erreur d'enregistrement : {confirmation}", file=sys.stderr)
+            logger.info(f"{agent_id}", f"Erreur d'enregistrement : {confirmation}")
             return
 
         async for tick in ws_tick:
@@ -44,7 +46,7 @@ async def run_client(url_tick: str, url_ordre: str,
 
             decisions = agent.trade(stock_dict)
 
-            print(f"[Python-Debug] [{agent_id=}] decision : {decisions}", file=sys.stderr)
+            logger.info(f"Python-Debug {agent_id=}", f"decision : {decisions}")
 
             if decisions == ["PASS"]:
                 await ws_ordre.send("PASS")
@@ -53,7 +55,7 @@ async def run_client(url_tick: str, url_ordre: str,
 
             await ws_ordre.send("|".join(decisions))
             ack = await ws_ordre.recv()
-            print(f"[{agent_id}] ACK reçu : {ack}", file=sys.stderr)
+            logger.info(f"{agent_id}", f"ACK reçu : {ack}")
 
             # Mise à jour portfolio
             for idx, decision in enumerate(decisions):
@@ -69,4 +71,4 @@ async def run_client(url_tick: str, url_ordre: str,
                         agent.portfolio[stock][2] -= quantity
                         agent.portfolio[stock][1]  = stock_dict[stock].current_price
 
-        print(f"[{agent_id}] Fin. Wallet : {agent.wallet:.2f}€", file=sys.stderr)
+        logger.info(f"{agent_id}, "f"Fin. Wallet : {agent.wallet:.2f}€")
