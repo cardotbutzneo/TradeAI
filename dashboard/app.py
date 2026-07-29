@@ -3,6 +3,7 @@
 A read-only visualizer for the trading simulation. It repeatedly parses the
 log the simulation already writes (``src_cpp/bourse.log``) and renders, live:
 
+  * KPI tiles (ticks, agents, trades, best performer),
   * a leaderboard of the agents ranked by net worth,
   * net-worth (equity) curves over time,
   * price charts per ticker with each agent's executed BUY/SELL markers.
@@ -27,93 +28,130 @@ from plotly.subplots import make_subplots
 from log_parser import SimState, current_networth, parse_log
 
 # ---------------------------------------------------------------------------
-# Config / theme
+# Config
 # ---------------------------------------------------------------------------
 HERE = os.path.dirname(os.path.abspath(__file__))
 LOG_PATH = os.environ.get("TRADEAI_LOG", os.path.join(HERE, "..", "src_cpp", "bourse.log"))
 REFRESH_MS = 800
 
-BG = "#0e1117"
-PANEL = "#161b22"
-GRID = "#2a2f3a"
-TEXT = "#e6edf3"
-MUTED = "#8b949e"
-GREEN = "#3fb950"
-RED = "#f85149"
+# ---------------------------------------------------------------------------
+# Theme — validated dark palette (dataviz skill, references/palette.md).
+# Six-checks validator run on this exact set: all PASS in dark mode, first
+# three categorical slots also clear the stricter all-pairs check used for
+# the scatter-style trade markers.
+# ---------------------------------------------------------------------------
+PAGE = "#0d0d0d"            # page plane
+SURFACE = "#1a1a19"         # card / chart surface
+INK = "#ffffff"             # primary text
+INK_SECONDARY = "#c3c2b7"
+INK_MUTED = "#898781"
+GRID = "#2c2c2a"
+BASELINE = "#383835"
+BORDER = "rgba(255,255,255,0.10)"
+FONT = "Segoe UI, system-ui, -apple-system, sans-serif"
 
-# Stable colour per agent (extra agents fall back to the palette by index).
-AGENT_COLORS = ["#00d4ff", "#ff6ec7", "#ffd93d", "#a371f7", "#7ee787"]
+GOOD = "#0ca30c"
+WARNING = "#fab219"
+CRITICAL = "#d03b3b"
+
+# Categorical identity, fixed order — never cycle or reassign per filter.
+AGENT_COLORS = [
+    "#3987e5", "#d95926", "#199e70", "#c98500",
+    "#d55181", "#008300", "#9085e9", "#e66767",
+]
 
 
-def agent_color(agent_id: str, idx: int) -> str:
+def agent_color(idx: int) -> str:
     return AGENT_COLORS[idx % len(AGENT_COLORS)]
-
-
-def _base_layout(fig: go.Figure, title: str, height: int) -> go.Figure:
-    fig.update_layout(
-        title=dict(text=title, font=dict(color=TEXT, size=16)),
-        paper_bgcolor=PANEL,
-        plot_bgcolor=PANEL,
-        font=dict(color=TEXT),
-        margin=dict(l=50, r=20, t=50, b=40),
-        height=height,
-        legend=dict(bgcolor="rgba(0,0,0,0)", font=dict(color=TEXT)),
-        hovermode="x unified",
-    )
-    fig.update_xaxes(gridcolor=GRID, zerolinecolor=GRID)
-    fig.update_yaxes(gridcolor=GRID, zerolinecolor=GRID)
-    return fig
 
 
 # ---------------------------------------------------------------------------
 # Figure builders
 # ---------------------------------------------------------------------------
+def _base_layout(fig: go.Figure, title: str, height: int, legend_pos: str = "top") -> go.Figure:
+    if legend_pos == "top":
+        legend = dict(
+            bgcolor="rgba(0,0,0,0)", font=dict(color=INK_SECONDARY, size=12),
+            orientation="h", yanchor="bottom", y=1.02, xanchor="left", x=0,
+        )
+    else:
+        legend = dict(
+            bgcolor="rgba(0,0,0,0)", font=dict(color=INK_SECONDARY, size=12),
+            orientation="h", yanchor="top", y=-0.14, xanchor="left", x=0,
+        )
+    fig.update_layout(
+        title=dict(text=title, font=dict(color=INK, size=15, family=FONT)),
+        paper_bgcolor=SURFACE,
+        plot_bgcolor=SURFACE,
+        font=dict(color=INK_SECONDARY, family=FONT, size=12),
+        margin=dict(l=48, r=20, t=52, b=36),
+        height=height,
+        legend=legend,
+        hovermode="x unified",
+        hoverlabel=dict(bgcolor=PAGE, font=dict(color=INK, size=12), bordercolor=BORDER),
+    )
+    fig.update_xaxes(gridcolor=GRID, zerolinecolor=BASELINE, linecolor=BASELINE, showline=True)
+    fig.update_yaxes(gridcolor=GRID, zerolinecolor=BASELINE, linecolor=BASELINE, showline=True)
+    return fig
+
+
 def build_networth_fig(state: SimState) -> go.Figure:
     fig = go.Figure()
     for idx, (aid, ag) in enumerate(sorted(state.agents.items())):
         if not ag.networth_hist:
             continue
         n = len(ag.networth_hist)
+        color = agent_color(idx)
         fig.add_trace(
             go.Scatter(
                 x=state.times[:n],
                 y=ag.networth_hist,
                 mode="lines",
                 name=aid,
-                line=dict(color=agent_color(aid, idx), width=2.5),
+                line=dict(color=color, width=2),
+                hovertemplate=f"{aid}: %{{y:,.2f}} €<extra></extra>",
             )
         )
         fig.add_hline(
             y=ag.initial_cash,
-            line=dict(color=agent_color(aid, idx), width=1, dash="dot"),
-            opacity=0.35,
+            line=dict(color=color, width=1, dash="dot"),
+            opacity=0.3,
         )
-    return _base_layout(fig, "💰 Net worth over time (cash + holdings)", 340)
+    if not state.agents:
+        fig.add_annotation(
+            text="No data yet — start a simulation",
+            showarrow=False, font=dict(color=INK_MUTED, size=13),
+        )
+    return _base_layout(fig, "Net worth over time", 360)
 
 
 def build_price_fig(state: SimState) -> go.Figure:
     tickers = state.tickers or []
-    rows = max(len(tickers), 1)
+    n = max(len(tickers), 1)
+    cols = 2 if len(tickers) > 1 else 1
+    rows = (n + cols - 1) // cols
     fig = make_subplots(
-        rows=rows, cols=1, shared_xaxes=True, vertical_spacing=0.08,
-        subplot_titles=[f"{t}  (€)" for t in tickers] or ["No data yet"],
+        rows=rows, cols=cols, shared_xaxes=False,
+        horizontal_spacing=0.07, vertical_spacing=0.16,
+        subplot_titles=tickers or ["No data yet"],
     )
 
-    for r, ticker in enumerate(tickers, start=1):
+    for i, ticker in enumerate(tickers):
+        r, c = i // cols + 1, i % cols + 1
         series = state.prices.get(ticker, [])
         fig.add_trace(
             go.Scatter(
                 x=state.times, y=series, mode="lines", name=ticker,
-                line=dict(color="#58a6ff", width=1.8), showlegend=False,
-                connectgaps=True,
+                line=dict(color=AGENT_COLORS[0], width=2), showlegend=False,
+                connectgaps=True, hovertemplate="%{y:.2f} €<extra></extra>",
             ),
-            row=r, col=1,
+            row=r, col=c,
         )
 
-        # price lookup at a given timestamp for placing trade markers
         price_at = {t: p for t, p in zip(state.times, series) if p is not None}
 
         for idx, (aid, ag) in enumerate(sorted(state.agents.items())):
+            color = agent_color(idx)
             for action, symbol in (("BUY", "triangle-up"), ("SELL", "triangle-down")):
                 xs, ys, texts = [], [], []
                 for tr in ag.trades:
@@ -129,92 +167,114 @@ def build_price_fig(state: SimState) -> go.Figure:
                     continue
                 fig.add_trace(
                     go.Scatter(
-                        x=xs, y=ys, mode="markers", name=f"{aid} {action}",
-                        text=texts, hovertemplate="%{text}<br>%{y:.2f}€<extra></extra>",
+                        x=xs, y=ys, mode="markers", name=aid,
+                        text=texts, hovertemplate="%{text}<br>%{y:.2f} €<extra></extra>",
                         marker=dict(
-                            symbol=symbol, size=11,
-                            color=agent_color(aid, idx),
-                            line=dict(width=1, color="#0e1117"),
+                            symbol=symbol, size=11, color=color,
+                            line=dict(width=2, color=SURFACE),
                         ),
-                        showlegend=(r == 1),
+                        showlegend=(i == 0),
                         legendgroup=aid,
                     ),
-                    row=r, col=1,
+                    row=r, col=c,
                 )
 
-    fig = _base_layout(fig, "📈 Prices & executed trades", 240 * rows + 60)
-    fig.update_xaxes(gridcolor=GRID)
-    fig.update_yaxes(gridcolor=GRID)
+    fig = _base_layout(fig, "Prices & executed trades", 280 * rows + 40, legend_pos="bottom")
+    fig.update_annotations(font=dict(color=INK_SECONDARY, size=13, family=FONT))
     return fig
 
 
-def build_leaderboard(state: SimState) -> html.Table:
-    header = [
-        "#", "Agent", "Net worth", "Return", "Cash", "Holdings", "Buys", "Sells", "Rejects",
+# ---------------------------------------------------------------------------
+# HTML components
+# ---------------------------------------------------------------------------
+def stat_tile(label: str, value: str, delta: float | None = None) -> html.Div:
+    children = [
+        html.Div(label, className="stat-label"),
+        html.Div(value, className="stat-value"),
     ]
-    td_base = {"padding": "10px 12px", "borderBottom": f"1px solid {GRID}"}
+    if delta is not None:
+        color = GOOD if delta >= 0 else CRITICAL
+        sign = "+" if delta >= 0 else ""
+        children.append(
+            html.Div(f"{sign}{delta:.1f} %", className="stat-delta", style={"color": color})
+        )
+    return html.Div(children, className="stat-tile")
 
-    def cell(value, extra=None):
-        return html.Td(value, style={**td_base, **(extra or {})})
 
-    rows = []
-    order = sorted(state.agents)  # for stable colour assignment
+def build_stat_row(state: SimState) -> list[html.Div]:
+    n_agents = len(state.agents)
+    n_trades = sum(ag.n_buy + ag.n_sell for ag in state.agents.values())
+    n_rejects = sum(ag.n_reject for ag in state.agents.values())
+
+    best_label, best_delta = "—", None
+    if state.agents:
+        best_aid, best_ag = max(
+            state.agents.items(),
+            key=lambda kv: current_networth(state, kv[1]),
+        )
+        nw = current_networth(state, best_ag)
+        best_delta = (nw - best_ag.initial_cash) / best_ag.initial_cash * 100 if best_ag.initial_cash else 0.0
+        best_label = best_aid
+
+    return [
+        stat_tile("Ticks processed", f"{state.n_ticks:,}"),
+        stat_tile("Active agents", str(n_agents)),
+        stat_tile("Trades executed", f"{n_trades:,}"),
+        stat_tile("Rejected orders", f"{n_rejects:,}"),
+        stat_tile("Best performer", best_label, best_delta),
+    ]
+
+
+def build_leaderboard(state: SimState) -> html.Table:
+    if not state.agents:
+        return html.Div("No agents yet — start a simulation to see the leaderboard.", className="lb-empty")
+
+    header = ["#", "Agent", "Net worth", "Return", "Cash", "Holdings", "Buys", "Sells", "Rejects"]
+    order = sorted(state.agents)  # stable colour assignment
     ranked = sorted(
         state.agents.items(), key=lambda kv: current_networth(state, kv[1]), reverse=True
     )
+
+    rows = []
     for rank, (aid, ag) in enumerate(ranked, start=1):
         nw = current_networth(state, ag)
         holdings = nw - ag.cash
         ret = (nw - ag.initial_cash) / ag.initial_cash * 100 if ag.initial_cash else 0.0
-        ret_color = GREEN if ret >= 0 else RED
-        color = agent_color(aid, order.index(aid))
+        ret_color = GOOD if ret >= 0 else CRITICAL
+        color = agent_color(order.index(aid))
         medal = {1: "🥇", 2: "🥈", 3: "🥉"}.get(rank, str(rank))
         rows.append(
             html.Tr(
                 [
-                    cell(medal, {"textAlign": "center"}),
-                    cell(aid, {"color": color, "fontWeight": "bold"}),
-                    cell(f"{nw:,.2f} €", {"fontWeight": "bold"}),
-                    cell(f"{ret:+.1f} %", {"color": ret_color, "fontWeight": "bold"}),
-                    cell(f"{ag.cash:,.2f} €"),
-                    cell(f"{holdings:,.2f} €"),
-                    cell(str(ag.n_buy), {"color": GREEN}),
-                    cell(str(ag.n_sell), {"color": RED}),
-                    cell(str(ag.n_reject), {"color": MUTED}),
-                ]
+                    html.Td(medal, style={"textAlign": "center"}),
+                    html.Td(aid, style={"color": color, "fontWeight": 600}),
+                    html.Td(f"{nw:,.2f} €", style={"fontWeight": 600}),
+                    html.Td(f"{ret:+.1f} %", style={"color": ret_color, "fontWeight": 600}),
+                    html.Td(f"{ag.cash:,.2f} €"),
+                    html.Td(f"{holdings:,.2f} €"),
+                    html.Td(str(ag.n_buy), style={"color": GOOD}),
+                    html.Td(str(ag.n_sell), style={"color": CRITICAL}),
+                    html.Td(str(ag.n_reject), style={"color": INK_MUTED}),
+                ],
+                className="lb-row",
             )
         )
 
-    th_style = {
-        "padding": "8px 12px", "textAlign": "left", "color": MUTED,
-        "borderBottom": f"1px solid {GRID}", "fontSize": "12px",
-        "textTransform": "uppercase", "letterSpacing": "0.5px",
-    }
-
-    return html.Table(
-        [html.Thead(html.Tr([html.Th(h, style=th_style) for h in header])), html.Tbody(rows)],
-        style={
-            "width": "100%", "borderCollapse": "collapse",
-            "backgroundColor": PANEL, "color": TEXT, "fontSize": "15px",
-        },
+    table = html.Table(
+        [html.Thead(html.Tr([html.Th(h) for h in header])), html.Tbody(rows)],
+        className="lb-table",
     )
+    return html.Div(table, className="lb-scroll")
 
 
 def status_badge(state: SimState) -> html.Span:
     if state.finished:
-        label, color = "● FINISHED", MUTED
+        label, cls = "● FINISHED", "badge-muted"
     elif state.n_ticks > 0:
-        label, color = "● LIVE", GREEN
+        label, cls = "● LIVE", "badge-good"
     else:
-        label, color = "● WAITING FOR DATA", "#d29922"
-    return html.Span(
-        label,
-        style={
-            "color": color, "fontWeight": "bold", "fontSize": "14px",
-            "padding": "4px 12px", "border": f"1px solid {color}",
-            "borderRadius": "20px",
-        },
-    )
+        label, cls = "● WAITING FOR DATA", "badge-warning"
+    return html.Span(label, className=f"badge {cls}")
 
 
 # ---------------------------------------------------------------------------
@@ -224,35 +284,49 @@ app = Dash(__name__, title="TradeAI Dashboard")
 server = app.server  # for optional WSGI hosting
 
 app.layout = html.Div(
-    style={
-        "backgroundColor": BG, "minHeight": "100vh", "padding": "24px 32px",
-        "fontFamily": "Segoe UI, Roboto, system-ui, sans-serif", "color": TEXT,
-    },
+    className="app-root",
     children=[
-        html.Div(
-            style={"display": "flex", "alignItems": "center", "gap": "16px",
-                   "marginBottom": "8px"},
+        html.Header(
+            className="app-header",
             children=[
-                html.H1("📊 TradeAI — Live Dashboard",
-                        style={"margin": 0, "fontSize": "26px"}),
-                html.Div(id="status-badge"),
-                html.Span(id="tick-counter", style={"color": MUTED, "fontSize": "14px"}),
+                html.Div(
+                    className="brand",
+                    children=[
+                        html.Img(src=app.get_asset_url("logo.svg"), className="brand-logo"),
+                        html.Div(
+                            className="brand-text",
+                            children=[
+                                html.Span("TradeAI", className="brand-name"),
+                                html.Span("Live simulation dashboard", className="brand-tag"),
+                            ],
+                        ),
+                    ],
+                ),
+                html.Div(
+                    className="header-status",
+                    children=[
+                        html.Div(id="status-badge"),
+                        html.Span(id="tick-counter", className="tick-counter"),
+                    ],
+                ),
             ],
         ),
-        html.P(
-            f"Reading: {os.path.relpath(LOG_PATH, HERE)}  ·  auto-refresh "
-            f"{REFRESH_MS/1000:.1f}s  ·  read-only observer of the simulation",
-            style={"color": MUTED, "marginTop": 0, "fontSize": "13px"},
+        html.Div(id="stat-row", className="stat-row"),
+        html.Div(
+            className="card section-card",
+            children=[
+                html.H2("Leaderboard", className="card-title"),
+                html.Div(id="leaderboard"),
+            ],
         ),
         html.Div(
-            id="leaderboard",
-            style={"backgroundColor": PANEL, "borderRadius": "10px",
-                   "padding": "12px 16px", "marginBottom": "20px",
-                   "border": f"1px solid {GRID}"},
+            className="card section-card",
+            children=[dcc.Graph(id="networth-graph", config={"displayModeBar": False})],
         ),
-        dcc.Graph(id="networth-graph", config={"displayModeBar": False}),
-        html.Div(style={"height": "20px"}),
-        dcc.Graph(id="price-graph", config={"displayModeBar": False}),
+        html.Div(
+            className="card section-card",
+            children=[dcc.Graph(id="price-graph", config={"displayModeBar": False})],
+        ),
         dcc.Interval(id="refresh", interval=REFRESH_MS, n_intervals=0),
     ],
 )
@@ -262,6 +336,7 @@ app.layout = html.Div(
     Output("networth-graph", "figure"),
     Output("price-graph", "figure"),
     Output("leaderboard", "children"),
+    Output("stat-row", "children"),
     Output("status-badge", "children"),
     Output("tick-counter", "children"),
     Input("refresh", "n_intervals"),
@@ -273,6 +348,7 @@ def refresh(_n):
         build_networth_fig(state),
         build_price_fig(state),
         build_leaderboard(state),
+        build_stat_row(state),
         status_badge(state),
         counter,
     )
