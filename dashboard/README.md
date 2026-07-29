@@ -1,8 +1,8 @@
-# 📊 TradeAI Dashboard
+# TradeAI Dashboard
 
-A live, web-based dashboard to visualize the trading simulation: agent
-leaderboard, net-worth curves, and price charts with each agent's buy/sell
-markers — all updating in real time.
+A live, web-based dashboard to visualize the trading simulation: KPI tiles,
+agent leaderboard, net-worth curves, and price charts with each agent's
+buy/sell markers — all updating in real time, in a full-width dark layout.
 
 > **It does not touch the simulation logic.** The dashboard is a *read-only
 > observer*: it only parses the log the simulation already writes
@@ -15,11 +15,12 @@ markers — all updating in real time.
 
 | Panel | Content |
 |-------|---------|
+| **KPI tiles** | Ticks processed, active agents, trades executed, rejected orders, and the current best performer. |
 | **Leaderboard** | Agents ranked by net worth, with return %, cash, holdings value, and buy/sell/reject counts. |
 | **Net worth over time** | Each agent's equity curve (cash + holdings), with a dotted line at their starting capital. |
 | **Prices & trades** | One price chart per ticker (GOOG, APPL…) with ▲ BUY / ▼ SELL markers per agent, placed at the executed price. |
 
-The header shows a **● LIVE / ● FINISHED** badge and the tick count.
+The header shows the TradeAI logo, a **● LIVE / ● FINISHED / ● WAITING** badge, and the tick count.
 
 ### Preview
 
@@ -70,7 +71,9 @@ Watch the charts fill up live while the simulation runs.
 | File | Role |
 |------|------|
 | [`log_parser.py`](log_parser.py) | Parses `bourse.log` into a structured `SimState` (prices, agents, trades). Pure, no simulation imports. |
-| [`app.py`](app.py) | The Dash web app: builds the figures and refreshes on a timer. |
+| [`app.py`](app.py) | The Dash web app: builds the figures/KPI tiles and refreshes on a timer. |
+| [`assets/style.css`](assets/style.css) | Layout, cards, and the leaderboard table style (auto-loaded by Dash). |
+| [`assets/logo.svg`](assets/logo.svg) | The header logo mark. |
 
 ## Notes
 
