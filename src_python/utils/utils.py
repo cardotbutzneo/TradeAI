@@ -1,6 +1,13 @@
 import json
 import sys
 
+class Return_code:
+    def __init__(self):
+        _SUCCESS = 0,
+        _CONFIG_ERROR = 3,
+        _PORT_BIND_FAILED = 4,
+        _ENGINE_CRASH = 5
+
 def get_settings():
     try:
         with open("config/settings.json", 'r') as file:

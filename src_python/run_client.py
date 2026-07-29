@@ -4,6 +4,7 @@ import websockets
 from .AI import Stock, AI
 
 from .utils.logger import logger
+from .broker import process
 
 """FIle containing the function to run a client that connects to the broker and receives ticks and sends orders.
 - run_client(url_tick: str, url_ordre: str, agent: AI, agent_id: str): Connects to the broker and handles ticks and orders for a given agent.
@@ -22,10 +23,11 @@ async def run_client(url_tick: str, url_ordre: str,
         confirmation = await ws_ordre.recv()  # attend la confirmation du broker
 
         if confirmation == f"REGISTERED;{agent_id}":
-            logger.info(f"{agent_id}", f"Enregistré avec succès")
+            logger.info(f"{agent_id}", f"Enregistré avec succès auprès du serveur")
         else:
             logger.info(f"{agent_id}", f"Erreur d'enregistrement : {confirmation}")
-            return
+
+        
 
         async for tick in ws_tick:
             if tick == "STOP": break
