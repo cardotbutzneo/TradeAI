@@ -1,7 +1,7 @@
 import matplotlib.pyplot as plt
 from matplotlib.lines import Line2D
 import numpy as np
-from AI import Stock
+from .AI import Stock
 
 def price_graph(stock_list: list[Stock]):
     stock_list = list(stock_list)
