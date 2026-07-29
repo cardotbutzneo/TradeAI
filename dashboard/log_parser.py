@@ -1,19 +1,19 @@
 """log_parser.py — Read-only observer of the simulation.
 
-Parses ``src_cpp/bourse.log`` (the file the simulation already writes to) and
-reconstructs a structured view of the run: price series per ticker, and per
-agent the cash / holdings / trades over time.
+Parses ``logs/simulation.log`` (the file the simulation already writes to,
+per ``config/settings.json``) and reconstructs a structured view of the run:
+price series per ticker, and per agent the cash / holdings / trades over time.
 
 This module NEVER imports or touches the simulation code. It only reads the
 log file, so it works both live (while a sim is running) and as a replay of a
 finished run.
 
-Log lines it understands (they may be interleaved on the same physical line,
-because C++ stderr and Python stderr mix, so we match by regex over the whole
-text, not line by line):
+Log lines it understands (they carry a ``[timestamp] [LEVEL]`` prefix from
+the logger, matched by regex over the whole text rather than anchored to the
+line start, so the exact prefix doesn't matter):
 
     [Broker] reçu C++ : 'TICK;2026/07/26-09:30:00;GOOG:144.17:13,APPL:41.08:13,'
-    [Python-Debug] [agent_id='agent1'] decision : ['BUY;GOOG;2', 'BUY;APPL;7']
+    [Python-Debug agent_id='agent1'] decision : ['BUY;GOOG;2', 'BUY;APPL;7']
     [agent1] ACK reçu : ACK;agent1;OK;445.913
     [agent2] ACK reçu : ACK;agent2;REJECT_NO_CASH
     [agent1] Fin. Wallet : 16.62€
@@ -33,7 +33,7 @@ INITIAL_CASH: dict[str, float] = {"agent1": 1000.0, "agent2": 2000.0, "agent3": 
 DEFAULT_INITIAL = 1000.0
 
 _TICK_RE = re.compile(r"TICK;([^;']+);([^'\n]*)")
-_DEC_RE = re.compile(r"\[agent_id='(agent\w+)'\] decision : (\[[^\]]*\])")
+_DEC_RE = re.compile(r"agent_id='(agent\w+)'\]\s*decision\s*:\s*(\[[^\]]*\])")
 _ACK_RE = re.compile(r"\[(agent\w+)\] ACK reçu : ACK;agent\w+;([A-Z_]+)(?:;([-\d.]+))?")
 _FIN_RE = re.compile(r"\[(agent\w+)\] Fin\. Wallet : ([-\d.]+)")
 _STOP_RE = re.compile(r"reçu C\+\+ : 'STOP'")
@@ -223,7 +223,7 @@ def current_networth(state: SimState, ag: AgentState) -> float:
 if __name__ == "__main__":
     import sys
 
-    log = sys.argv[1] if len(sys.argv) > 1 else "../src_cpp/bourse.log"
+    log = sys.argv[1] if len(sys.argv) > 1 else "../logs/simulation.log"
     s = parse_log(log)
     print(f"ticks={s.n_ticks} tickers={s.tickers} finished={s.finished}")
     for aid, ag in sorted(s.agents.items()):

@@ -4,5 +4,5 @@ __pycache__/
 data/
 obj/
 main
-bourse.log
+logs/
 GETTING_STARTED.md

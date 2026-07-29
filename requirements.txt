@@ -4,3 +4,7 @@
 numpy
 matplotlib
 websockets
+
+# Dashboard (dashboard/app.py)
+dash
+plotly

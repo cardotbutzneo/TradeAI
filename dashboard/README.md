@@ -22,38 +22,26 @@ buy/sell markers — all updating in real time, in a full-width dark layout.
 
 The header shows the TradeAI logo, a **● LIVE / ● FINISHED / ● WAITING** badge, and the tick count.
 
-### Preview
-
-![Net worth over time](preview_networth.png)
-![Prices & executed trades](preview_prices.png)
-
 ---
-
-## Install (once)
-
-```bash
-pip install --break-system-packages -r dashboard/requirements.txt
-```
 
 ## Run
 
-Two terminals (both in WSL):
+It's a local script — no server to deploy, no Docker. Two terminals:
 
 **Terminal 1 — start the dashboard:**
 ```bash
-cd /mnt/c/Users/X515/Documents/GitHub/TradeAI/dashboard
-python3 app.py
+python3 dashboard/app.py
 # then open http://127.0.0.1:8050 in your browser
 ```
 
 **Terminal 2 — run a simulation (the dashboard updates by itself):**
 ```bash
-cd /mnt/c/Users/X515/Documents/GitHub/TradeAI
-./run.sh --generate dur=1 file=data/small.csv
-./run.sh --train data/small.csv
+./run.sh --generate --dur=1 --file=data/small.csv
+./run.sh train data/small.csv
 ```
 
-Watch the charts fill up live while the simulation runs.
+Watch the charts fill up live while the simulation runs. Dependencies are the
+project's usual `pip install -r requirements.txt` (see the repo root).
 
 ---
 

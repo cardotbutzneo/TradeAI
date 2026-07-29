@@ -74,10 +74,7 @@ async def broker(cpp_path="./src_cpp/main", mode="train", fast="",
         logger.info("Broker", f"Attente de {nb_clients} client(s)...")
         await clients_prets.wait()
         logger.debug("Broker", f"Tous les clients connectés, démarrage...")
-        await clients_prets.wait()
         logger.debug("Broker", "Envoi START au C++")
-
-        logger.debug("BROKER", f"process: {process.pid}")
         process.stdin.write("START\n")
         process.stdin.flush()
         await lire_cpp()

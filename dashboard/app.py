@@ -1,7 +1,7 @@
 """app.py — TradeAI live dashboard (Plotly Dash).
 
 A read-only visualizer for the trading simulation. It repeatedly parses the
-log the simulation already writes (``src_cpp/bourse.log``) and renders, live:
+log the simulation already writes (``logs/simulation.log``) and renders, live:
 
   * KPI tiles (ticks, agents, trades, best performer),
   * a leaderboard of the agents ranked by net worth,
@@ -31,7 +31,7 @@ from log_parser import SimState, current_networth, parse_log
 # Config
 # ---------------------------------------------------------------------------
 HERE = os.path.dirname(os.path.abspath(__file__))
-LOG_PATH = os.environ.get("TRADEAI_LOG", os.path.join(HERE, "..", "src_cpp", "bourse.log"))
+LOG_PATH = os.environ.get("TRADEAI_LOG", os.path.join(HERE, "..", "logs", "simulation.log"))
 REFRESH_MS = 800
 
 # ---------------------------------------------------------------------------
@@ -281,7 +281,6 @@ def status_badge(state: SimState) -> html.Span:
 # App
 # ---------------------------------------------------------------------------
 app = Dash(__name__, title="TradeAI Dashboard")
-server = app.server  # for optional WSGI hosting
 
 app.layout = html.Div(
     className="app-root",
