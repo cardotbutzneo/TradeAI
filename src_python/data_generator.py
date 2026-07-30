@@ -22,7 +22,7 @@ def parser_arguments():
     i = 1
     while i < len(sys.argv):
         if i + 1 < len(sys.argv):
-            args[sys.argv[i]] = sys.argv[i+1]
+            args[sys.argv[i].lstrip('-')] = sys.argv[i+1]
             i += 2
         else:
             i += 1
@@ -54,14 +54,14 @@ def generer_flux_bourse(date_actuelle, ticker="GOOG", prix_initial=142.05, jours
     Simule un historique boursier via un Mouvement Brownien Géométrique.
     Envoie les données sur stdout au format CSV.
     """
-    # Paramètres financiers annuels convertis en quotidiens
-    drift = 0.10 / 252       # +10% de rendement attendu par an (252 jours de bourse)
-    volatility = 0.25 / math.sqrt(252) # 25% de volatilité annuelle
-    
+    points_par_jour = 102 # génère 102 pts par jour soit toutes les 5 minutes
+
+    # Paramètres du Mouvement Brownien Géométrique 
+    drift = (0.10 / 252) / points_par_jour       # +10% de rendement attendu par an (252 jours de bourse)
+    volatility = (0.25 / math.sqrt(252)) / math.sqrt(points_par_jour) # 25% de volatilité annuelle
+
     prix_actuel = prix_initial
     intervale = timedelta(minutes=5)
-
-    points_par_jour = 102 # génère 102 pts par jour soit toutes les 5 minutes
 
     for j in range(jours):
         for p in range(points_par_jour):
