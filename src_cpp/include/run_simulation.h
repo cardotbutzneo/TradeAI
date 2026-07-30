@@ -9,13 +9,12 @@
 bool validate_start_signal(Logger& logger);
 
 void run_simulation(const FinancialNDArray& matrix,
-                    const std::vector<IndexMap>& index_actions,
-                    const std::vector<IndexMap>& index_dates,
-                    std::map<std::string, Action>& liste_des_actions,
-                    const std::vector<long long>& liste_des_quantites,
-                    int nb_actions,
+                    const std::vector<IndexMap>& stock_index,
+                    const std::vector<IndexMap>& date_index,
+                    std::map<std::string, Action>& stocks,
+                    const std::vector<long long>& volumes,
+                    int nb_stocks,
                     int nb_dates,
                     const std::map<std::string, std::string>& args,
-                    Portfolio& portefeuille,
+                    std::map<std::string, Client>& clients,
                     Logger& logger);
-

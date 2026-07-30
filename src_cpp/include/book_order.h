@@ -3,19 +3,18 @@
 #include "header.h"
 #include <cmath>
 
-#define CONST_MALUS 0.01 // 1% tous les 10% au dessus du volume échangé
+#define PENALTY_RATE 0.01 // 1% per 10% above the traded volume
 
-/**Création d'une entité de banque autonome gérant les carnets d'odre
-*/
+/** Standalone entity managing order books. */
 
 enum class OrderType { BUY, SELL };
 
 struct Order {
     std::string buying_client;
     std::string selling_client;
-    OrderType side;        // BUY ou SELL
-    double price;          // Le prix limite demandé
-    long long quantity;    // Le nombre d'actions demandées
+    OrderType side;        // BUY or SELL
+    double price;          // Limit price requested
+    long long quantity;    // Number of shares requested
 };
 
 struct Trade {
@@ -30,19 +29,19 @@ struct Trade {
 
 class OrderBook {
 private:
-    // Trié par prix décroissant (le plus haut prix d'achat en premier)
+    // Sorted by descending price (highest buy price first)
     std::multimap<double, Order, std::greater<double>> bids;
-    
-    // Trié par prix croissant (le prix de vente le moins cher en premier)
+
+    // Sorted by ascending price (cheapest sell price first)
     std::multimap<double, Order, std::less<double>> asks;
 
 public:
-    long long total_quantity; // le nombre d'action totale
+    long long total_quantity; // total number of shares
     double best_bid = 0.0;
     double best_ask = 0.0;
-    std::vector<Trade> trade_history; // historique des trades passés
+    std::vector<Trade> trade_history; // history of past trades
 
-    // Fonction maîtresse : ajoute un ordre et essaie de le faire correspondre (Matching Engine)
+    // Master function: adds an order and tries to match it (Matching Engine)
     void process_order(const Order& new_order) {
         if (new_order.side == OrderType::BUY) {
             match_buy_order(new_order);
@@ -68,8 +67,8 @@ private:
         t.timestamp = std::time(nullptr);
         trade_history.push_back(t);
 
-        std::cerr << "[TRADE] " << t.buyer << " achète " << traded_qty
-                  << " actions de " << t.seller << " à " << trade_price << "\n";
+        std::cerr << "[TRADE] " << t.buyer << " buys " << traded_qty
+                  << " shares from " << t.seller << " at " << trade_price << "\n";
 
         return traded_qty;
     }
@@ -81,25 +80,24 @@ private:
     }
 
     void match_buy_order(Order buy_order) {
-        // Tant qu'il y a des vendeurs et que le prix d'achat couvre le prix de vente le moins cher
+        // While there are sellers and the buy price covers the cheapest ask
         while (!OrderBook::asks.empty() && buy_order.price >= asks.begin()->first && buy_order.quantity > 0) {
             auto best_ask_it = asks.begin();
             Order& sell_order = best_ask_it->second;
 
-            // Calcul de la quantité échangée (le minimum des deux)
+            // Compute the traded quantity (the minimum of the two)
             long long traded_qty = std::min(buy_order.quantity, sell_order.quantity);
-            
-            // ICI : Le trade d'un volume 'traded_qty' a lieu au prix 'sell_order.price' !
 
+            // HERE: the trade for 'traded_qty' shares happens at 'sell_order.price'!
 
             buy_order.quantity -= traded_qty;
             sell_order.quantity -= traded_qty;
 
             if (sell_order.quantity == 0) {
-                OrderBook::asks.erase(best_ask_it); // L'ordre de vente est totalement exécuté
+                OrderBook::asks.erase(best_ask_it); // The sell order is fully executed
             }
         }
-        // S'il reste de la quantité non achetée, on coupe l'ordre en deux et le replace dans le carnet
+        // If some quantity remains unbought, keep the remainder queued in the book
         if (buy_order.quantity > 0) {
            OrderBook::bids.insert({buy_order.price, buy_order});
         }
@@ -131,44 +129,43 @@ private:
     }
 
     public:
-        // Affiche l'état du carnet comme dans ton exemple
         void print_orderbook(const std::string& ticker) const {
-            std::cout << "\n=== CARNET " << ticker << " ===\n";
-            std::cout << "ASKS (vendeurs) :\n";
+            std::cout << "\n=== ORDER BOOK " << ticker << " ===\n";
+            std::cout << "ASKS (sellers):\n";
             for (auto& [price, order] : asks)
                 std::cout << "  SELL;" << ticker << ";" << order.quantity
                         << ";" << price << ";" << order.selling_client << "\n";
 
-            std::cout << "BIDS (acheteurs) :\n";
+            std::cout << "BIDS (buyers):\n";
             for (auto& [price, order] : bids)
                 std::cout << "  BUY;" << ticker << ";" << order.quantity
                         << ";" << price << ";" << order.buying_client << "\n";
         }
 
         void print_trade_history(const std::string& ticker) const {
-            std::cout << "\n=== HISTORIQUE TRADES " << ticker << " ===\n";
+            std::cout << "\n=== TRADE HISTORY " << ticker << " ===\n";
             for (auto& t : trade_history)
                 std::cout << "  " << t.buyer << " <- " << t.quantity
-                        << " actions <- " << t.seller
-                        << " à " << t.price << "\n";
+                        << " shares <- " << t.seller
+                        << " at " << t.price << "\n";
         }
 };
 
 class Action {
 public:
-    std::string id;               // nom de l'action
-    long long total_shares;       // Nombre total d'actions existantes de l'entreprise
-    double last_traded_price;     // Le dernier prix auquel une transaction a VRAIMENT eu lieu
-    long long current_volume;     // Volume cumulé échangé dans la journée
-    
-    OrderBook order_book;         // Le carnet d'ordres de cette action
+    std::string id;               // stock name
+    long long total_shares;       // total number of shares issued by the company
+    double last_traded_price;     // last price at which a trade actually occurred
+    long long current_volume;     // cumulative volume traded today
 
-    float return_progressive_malus(long long x) {
+    OrderBook order_book;         // order book for this stock
+
+    float compute_penalty(long long x) {
         if (current_volume == 0.0f) return 0.0f;
-        long long threshold = 0.1 * current_volume; // 10% du total échangé pour l'instant
+        long long threshold = 0.1 * current_volume; // 10% of total traded volume for now
         if (threshold <= 0) return 0.0f;
         double excess           = static_cast<double>(x - threshold);
-        double penalty_fraction = excess / threshold; // ratio au-dessus du seuil
-        return static_cast<float>(CONST_MALUS * penalty_fraction);
+        double penalty_fraction = excess / threshold; // ratio above the threshold
+        return static_cast<float>(PENALTY_RATE * penalty_fraction);
     }
 };

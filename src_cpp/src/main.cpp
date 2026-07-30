@@ -10,30 +10,48 @@ using namespace std;
 int main(int argc, char *argv[]) {
     Logger logger;
 
-    logger.debug("C++_Main", "C++ lancé");
+    logger.debug("C++_Main", "C++ started");
 
-    vector<IndexMap> index_actions(20);
-    vector<IndexMap> index_dates(1100);
-    int nb_actions = 0, nb_dates = 0;
+    std::map<std::string, std::string> args = parse_arguments(argc, argv);
 
-    std::map<std::string, Action> liste_des_actions;
-    vector<long long> liste_des_quantites;
+    vector<IndexMap> stock_index(20);
+    vector<IndexMap> date_index(1100);
+    int nb_stocks = 0, nb_dates = 0;
 
-    
+    std::map<std::string, Action> stocks;
+    vector<long long> volumes;
 
-    if (!validate_start_signal(logger)) {
-        logger.error("Main", "Signal invalide");
+    std::unique_ptr<FinancialNDArray> matrix = get_price_matrix(
+        args, stock_index, date_index, nb_stocks, nb_dates, stocks, volumes, logger);
+    if (!matrix) {
+        logger.error("Main", "Could not build the price matrix");
+        return static_cast<int>(ExitCode::CONFIG_ERROR);
+    }
+
+    std::string register_line;
+    if (!std::getline(std::cin, register_line)) {
+        logger.error("Main", "Error reading the REGISTER signal");
         return static_cast<int>(ExitCode::INVALIDE_ARG);
     }
 
-    std::map<std::string, Client> list_client;
-    
+    std::map<std::string, Client> clients;
+    if (!parse_register_line(register_line, clients, nb_stocks) || clients.empty()) {
+        logger.error("Main", "Invalid REGISTER signal: " + register_line);
+        return static_cast<int>(ExitCode::INVALIDE_ARG);
+    }
+    logger.debug("Main", "Registered " + std::to_string(clients.size()) + " client(s)");
+    cout << "REGISTER;OK" << endl;
 
-    std::thread t(lire_ordres);
+    if (!validate_start_signal(logger)) {
+        logger.error("Main", "Invalid signal");
+        return static_cast<int>(ExitCode::INVALIDE_ARG);
+    }
+
+    std::thread t(read_orders);
     t.detach();
 
-    run_simulation(*matrix, index_actions, index_dates, liste_des_actions,
-                   liste_des_quantites, nb_actions, nb_dates, args, portefeuille, logger);
+    run_simulation(*matrix, stock_index, date_index, stocks,
+                   volumes, nb_stocks, nb_dates, args, clients, logger);
 
     cout << "STOP" << endl;
     return static_cast<int>(ExitCode::SUCCESS);

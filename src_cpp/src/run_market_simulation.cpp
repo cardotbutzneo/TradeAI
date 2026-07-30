@@ -9,37 +9,40 @@
 #include <thread>
 #include <mutex>
 
+// Default account used for every order until multi-account routing (CTO/PEA) is wired up client-side.
+static const std::string DEFAULT_ACCOUNT = "CTO";
+
 bool validate_start_signal(Logger& logger) {
     std::string signal;
     if (!std::getline(std::cin, signal)) {
-        logger.error("Main", "Erreur de lecture du signal START");
+        logger.error("Main", "Error reading the START signal");
         return false;
     }
-    logger.debug("Main", "Signal : " + signal);
+    logger.debug("Main", "Signal: " + signal);
     return signal == "START";
 }
 
 static void send_ticks(const FinancialNDArray& matrix,
-                       const std::vector<IndexMap>& index_actions,
-                       const std::vector<IndexMap>& index_dates,
-                       int nb_actions,
-                       const std::vector<long long>& liste_des_quantites,
+                       const std::vector<IndexMap>& stock_index,
+                       const std::vector<IndexMap>& date_index,
+                       int nb_stocks,
+                       const std::vector<long long>& volumes,
                        int current_col,
                        const std::map<std::string, std::string>& args) {
-                        
-    const string& date_actuelle = index_dates[current_col].cle;
-    cout << "TICK;" << date_actuelle << ";";
+
+    const string& current_date = date_index[current_col].key;
+    cout << "TICK;" << current_date << ";";
 
     for (int i = 0; i < matrix.rows; i++) {
         if (args.at("fast") != "true")
             std::this_thread::sleep_for(std::chrono::milliseconds(100));
 
-        float prix = matrix.data[i * matrix.cols + current_col];
-        if (prix != -1.0f) {
-            string ticker = get_ticker_name(index_actions, i, nb_actions);
-            cout << ticker << ":" << prix << ":";
-            if (i < (int)liste_des_quantites.size()) {
-                cout << liste_des_quantites[i];
+        float price = matrix.data[i * matrix.cols + current_col];
+        if (price != -1.0f) {
+            string ticker = get_ticker_name(stock_index, i, nb_stocks);
+            cout << ticker << ":" << price << ":";
+            if (i < (int)volumes.size()) {
+                cout << volumes[i];
             } else {
                 cout << 0;
             }
@@ -49,127 +52,134 @@ static void send_ticks(const FinancialNDArray& matrix,
     cout << endl;
 }
 
-static void execute_buy(Portfolio& portefeuille,
-                        const string& client_id,
-                        int idx_action,
-                        std::map<std::string, Action>& liste_des_actions,
-                        long long qte,
+static void execute_buy(Client& client,
+                        int stock_idx,
+                        std::map<std::string, Action>& stocks,
+                        long long qty,
                         const string& ticker,
-                        float prix_action) {
-    if (qte <= 0) {
-        cout << "ACK;" << client_id << ";REJECT_INVALID_QTY|";
+                        float stock_price) {
+    if (qty <= 0) {
+        cout << "ACK;" << client.id << ";REJECT_INVALID_QTY|";
         return;
     }
 
-    float penality = liste_des_actions[ticker].return_progressive_malus(qte);
-    float cout_total = prix_action * qte * (1 + FRAIS_COURTAGE_ACHAT + penality);
-    if (!verify_buy(portefeuille, prix_action, static_cast<int>(qte))) {
-        cout << "ACK;" << client_id << ";REJECT_NO_CASH|";
+    AccountType& account = client.portfolios[DEFAULT_ACCOUNT];
+
+    float penalty = stocks[ticker].compute_penalty(qty);
+    float total_cost = stock_price * qty * (1 + BUY_FEE_RATE + penalty);
+    if (!verify_buy(account, stock_price, static_cast<int>(qty))) {
+        cout << "ACK;" << client.id << ";REJECT_NO_CASH|";
         return;
     }
 
-    Order new_order{client_id, "", OrderType::BUY, (double)prix_action, qte};
-    liste_des_actions[ticker].order_book.process_order(new_order);
-    portefeuille.cash -= cout_total;
-    portefeuille.shares_owned[idx_action] += qte;
-    cout << "ACK;" << client_id << ";OK;" << portefeuille.cash << "|";
+    Order new_order{client.id, "", OrderType::BUY, (double)stock_price, qty};
+    stocks[ticker].order_book.process_order(new_order);
+    record_trade(client, DEFAULT_ACCOUNT, ticker, "BUY", stock_price, qty, stock_idx, -total_cost);
+    cout << "ACK;" << client.id << ";OK;" << account.cash << "|";
 }
 
-static void execute_sell(Portfolio& portefeuille,
-                         const string& client_id,
-                         int idx_action,
-                         std::map<std::string, Action>& liste_des_actions,
-                         long long qte,
+static void execute_sell(Client& client,
+                         int stock_idx,
+                         std::map<std::string, Action>& stocks,
+                         long long qty,
                          const string& ticker,
-                         float prix_action) {
-    if (qte <= 0) {
-        cout << "ACK;" << client_id << ";REJECT_INVALID_QTY|";
+                         float stock_price) {
+    if (qty <= 0) {
+        cout << "ACK;" << client.id << ";REJECT_INVALID_QTY|";
         return;
     }
 
-    if (!verify_sell(portefeuille, static_cast<int>(qte), idx_action)) {
-        cout << "ACK;" << client_id << ";REJECT_NO_SHARES|";
+    AccountType& account = client.portfolios[DEFAULT_ACCOUNT];
+
+    if (!verify_sell(account, static_cast<int>(qty), stock_idx)) {
+        cout << "ACK;" << client.id << ";REJECT_NO_SHARES|";
         return;
     }
 
-    float penality = liste_des_actions[ticker].return_progressive_malus(qte);
-    float cout_total = prix_action * qte * (1 - FRAIS_COURTAGE_VENTE - penality);
-    Order new_order{"", client_id, OrderType::SELL, (double)prix_action, qte};
-    liste_des_actions[ticker].order_book.process_order(new_order);
-    portefeuille.cash += cout_total;
-    portefeuille.shares_owned[idx_action] -= qte;
-    cout << "ACK;" << client_id << ";OK;" << portefeuille.cash << "|";
+    float penalty = stocks[ticker].compute_penalty(qty);
+    float total_proceeds = stock_price * qty * (1 - SELL_FEE_RATE - penalty);
+    Order new_order{"", client.id, OrderType::SELL, (double)stock_price, qty};
+    stocks[ticker].order_book.process_order(new_order);
+    record_trade(client, DEFAULT_ACCOUNT, ticker, "SELL", stock_price, qty, stock_idx, total_proceeds);
+    cout << "ACK;" << client.id << ";OK;" << account.cash << "|";
 }
 
-static void process_order_line(const string& ordre,
-                               Portfolio& portefeuille,
-                               std::map<std::string, Action>& liste_des_actions,
-                               const std::vector<IndexMap>& index_actions,
-                               int nb_actions,
+static void process_order_line(const string& order_line,
+                               std::map<std::string, Client>& clients,
+                               std::map<std::string, Action>& stocks,
+                               const std::vector<IndexMap>& stock_index,
+                               int nb_stocks,
                                const FinancialNDArray& matrix,
                                int current_col,
                                Logger& logger) {
-    string client_id, reste;
-    stringstream flux(ordre);
-    getline(flux, client_id, '|');
-    getline(flux, reste);
+    string client_id, remaining;
+    stringstream stream(order_line);
+    getline(stream, client_id, '|');
+    getline(stream, remaining);
 
-    if (reste == "PASS" || reste.empty()) {
+    auto client_it = clients.find(client_id);
+    if (client_it == clients.end()) {
+        cout << "ACK;" << client_id << ";REJECT_UNKNOWN_CLIENT" << endl;
+        return;
+    }
+    Client& client = client_it->second;
+
+    if (remaining == "PASS" || remaining.empty()) {
         cout << "ACK;" << client_id << ";PASS" << endl;
         return;
     }
 
-    stringstream flux_ordres(reste);
-    string un_ordre;
-    while (getline(flux_ordres, un_ordre, '|')) {
-        if (un_ordre.empty()) continue;
+    stringstream orders_stream(remaining);
+    string single_order;
+    while (getline(orders_stream, single_order, '|')) {
+        if (single_order.empty()) continue;
 
-        stringstream flux_champs(un_ordre);
-        string action, ticker, qte_str;
-        if (!(getline(flux_champs, action, ';') &&
-              getline(flux_champs, ticker, ';') &&
-              getline(flux_champs, qte_str, ';'))) {
-            logger.debug("Main", "[Cpp Debug] ordre mal formé : " + un_ordre);
+        stringstream fields_stream(single_order);
+        string action, ticker, qty_str;
+        if (!(getline(fields_stream, action, ';') &&
+              getline(fields_stream, ticker, ';') &&
+              getline(fields_stream, qty_str, ';'))) {
+            logger.debug("Main", "[Cpp Debug] malformed order: " + single_order);
             cout << "ACK;" << client_id << ";REJECT_MALFORMED|";
             continue;
         }
 
-        long long qte = 0;
+        long long qty = 0;
         try {
-            qte = stoll(qte_str);
+            qty = stoll(qty_str);
         } catch (...) {
-            logger.debug("Main", "[Cpp Debug] quantité invalide : " + qte_str);
+            logger.debug("Main", "[Cpp Debug] invalid quantity: " + qty_str);
             cout << "ACK;" << client_id << ";REJECT_INVALID_QTY|";
             continue;
         }
 
-        int idx_action = -1;
-        for (int i = 0; i < nb_actions; i++) {
-            if (index_actions[i].cle == ticker) {
-                idx_action = index_actions[i].index;
+        int stock_idx = -1;
+        for (int i = 0; i < nb_stocks; i++) {
+            if (stock_index[i].key == ticker) {
+                stock_idx = stock_index[i].index;
                 break;
             }
         }
-        if (idx_action == -1) {
+        if (stock_idx == -1) {
             cout << "ACK;" << client_id << ";REJECT_UNKNOWN_TICKER|";
             continue;
         }
 
-        if (idx_action < 0 || idx_action >= matrix.rows) {
+        if (stock_idx < 0 || stock_idx >= matrix.rows) {
             cout << "ACK;" << client_id << ";REJECT_UNKNOWN_TICKER|";
             continue;
         }
 
-        float prix_action = matrix.data[idx_action * matrix.cols + current_col];
-        if (prix_action == -1.0f) {
+        float stock_price = matrix.data[stock_idx * matrix.cols + current_col];
+        if (stock_price == -1.0f) {
             cout << "ACK;" << client_id << ";REJECT_NO_PRICE|";
             continue;
         }
 
         if (action == "BUY") {
-            execute_buy(portefeuille, client_id, idx_action, liste_des_actions, qte, ticker, prix_action);
+            execute_buy(client, stock_idx, stocks, qty, ticker, stock_price);
         } else if (action == "SELL") {
-            execute_sell(portefeuille, client_id, idx_action, liste_des_actions, qte, ticker, prix_action);
+            execute_sell(client, stock_idx, stocks, qty, ticker, stock_price);
         } else {
             cout << "ACK;" << client_id << ";REJECT_UNKNOWN_ACTION|";
         }
@@ -178,26 +188,26 @@ static void process_order_line(const string& ordre,
 }
 
 void run_simulation(const FinancialNDArray& matrix,
-                    const std::vector<IndexMap>& index_actions,
-                    const std::vector<IndexMap>& index_dates,
-                    std::map<std::string, Action>& liste_des_actions,
-                    const std::vector<long long>& liste_des_quantites,
-                    int nb_actions,
+                    const std::vector<IndexMap>& stock_index,
+                    const std::vector<IndexMap>& date_index,
+                    std::map<std::string, Action>& stocks,
+                    const std::vector<long long>& volumes,
+                    int nb_stocks,
                     int nb_dates,
                     const std::map<std::string, std::string>& args,
-                    Portfolio& portefeuille,
+                    std::map<std::string, Client>& clients,
                     Logger& logger) {
     (void)nb_dates;
     for (int j = 0; j < matrix.cols; j++) {
-        send_ticks(matrix, index_actions, index_dates, nb_actions, liste_des_quantites, j, args);
+        send_ticks(matrix, stock_index, date_index, nb_stocks, volumes, j, args);
 
         std::lock_guard<std::mutex> lock(queue_mutex);
-        while (!ordre_queue.empty()) {
-            std::string ordre = ordre_queue.front();
-            ordre_queue.pop();
-            logger.debug("Main", "[Cpp Debug] reçu : " + ordre);
-            process_order_line(ordre, portefeuille, liste_des_actions,
-                               index_actions, nb_actions, matrix, j, logger);
+        while (!order_queue.empty()) {
+            std::string order_line = order_queue.front();
+            order_queue.pop();
+            logger.debug("Main", "[Cpp Debug] received: " + order_line);
+            process_order_line(order_line, clients, stocks,
+                               stock_index, nb_stocks, matrix, j, logger);
         }
     }
 }

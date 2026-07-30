@@ -11,9 +11,9 @@
 #include <map>
 using namespace std;
 
-constexpr float FRAIS_COURTAGE_ACHAT = 0.001f;
-constexpr float FRAIS_COURTAGE_VENTE = 0.001f;
-constexpr float ERROR_VALUE          = -1.0f;
+constexpr float BUY_FEE_RATE  = 0.001f;
+constexpr float SELL_FEE_RATE = 0.001f;
+constexpr float ERROR_VALUE   = -1.0f;
 
 enum ExitCode : int {
     SUCCESS = 0,
