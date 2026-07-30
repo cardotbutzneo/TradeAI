@@ -1,0 +1,5 @@
+{
+  "debug-mode": false,
+  "output-file": "logs/simulation.log",
+  "error-file": "logs/error.log"
+}

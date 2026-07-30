@@ -1,12 +1,14 @@
 import json
 import sys
+import enum as Enum
 
-class Return_code:
-    def __init__(self):
-        _SUCCESS = 0,
-        _CONFIG_ERROR = 3,
-        _PORT_BIND_FAILED = 4,
-        _ENGINE_CRASH = 5
+class Return_code(Enum):
+    SUCCESS = 0,
+    CONFIG_ERROR = 3,
+    PORT_BIND_FAILED = 4,
+    ENGINE_CRASH = 5,
+    INVALIDE_ARG = 6
+    FAIL_CONNECTION = 7
 
 def get_settings():
     try:

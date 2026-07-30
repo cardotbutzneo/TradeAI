@@ -129,3 +129,7 @@ async def lire_cpp():
                     await ack_queues[target_id].put(sub_ack)
                 else:
                     logger.info("Broker", f"ACK pour client inconnu : {target_id}")
+
+        elif line.startswith("REGISTER;"):
+            if clients_ticks:
+                await asyncio.gather(*[ws.send(line) for ws in clients_ticks])

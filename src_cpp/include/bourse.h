@@ -8,20 +8,22 @@ struct IndexMap {
     int index = 0;
 };
 
-struct Portfolio {
-    float cash        = 0.0f;
-    float total_value = 0.0f;
-    std::vector<int> shares_owned;
-};
-
 struct FinancialNDArray {
     int rows = 0, cols = 0;
     std::vector<float> data;
 };
 
+struct AccountType {
+    std::string              name;           // "CTO", "PEA"
+    float                    cash;
+    std::vector<int>         shares_owned;   // par index d'action
+    std::vector<Trade>       trade_history;
+};
+
 struct Client {
     std::string name;
     std::string id;
+    std::map<std::string, AccountType> portfolios;  // "CTO" → AccountType
 };
 
 // Déclarations

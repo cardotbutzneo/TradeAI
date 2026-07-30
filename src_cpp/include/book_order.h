@@ -6,30 +6,7 @@
 #define CONST_MALUS 0.01 // 1% tous les 10% au dessus du volume échangé
 
 /**Création d'une entité de banque autonome gérant les carnets d'odre
- * fichier utiliser en mode prod
 */
-
-/**To Do : Objectif : gerer le volume et le prix des actions avec un nouveau fichier.
- * Possibilité de simuler sur ce systeme ou sur les données historiques
- * 1. Gérer les carnets d'ordre en calculant le volume des actions de facon réalise (en fonction d'un % du capital de l'entreprise)
- * 2. Le cpp ne doit pas attendre le python avant de continuer, le cpp envoie des données en continue (des fractions toutes les 30s dans la realité disons). main.cpp doit servir de brokeur, et python comme client.
- * 3. Pouvoir brancher plusieurs scripts python au cpp pour simuler plusieurs achteur avec differente strategie
- * 4. Ameliorer le systeme de gestion avec l'ajout d'un carnet d'odre poussé (gestion de gros volume, frais de courtage non fixe, etc... -- peut etre ajouté a la phase 1 si prend pas trop de temps)
- * 
- * Refactor to do : 
- * 1. Création du carnet d'odre avec de vrai achat et vente d'actions. On ne suppose pas qu'il y a une quantité infini d'actions
- * 2. Ajout des regles des marchés pour le carnet d'odre
- * 3. 2-3
- */ 
-
-/**Sens de fonctionnement : 
- * serveur (cpp) : tourne tout seul en générant les prix en fonction du volume échangé, ou utilise les prix historique via stdin
- * client (python) : récupère les valeurs a chaque instant via stdout du cpp et envoie des ordre (achat, vente ou rien) via stdin du cpp
- * => les deux boucles l'un sur l'autre mais indépendament
- * 2 modes pour cpp : 
- * --train : récupère les données historique via le stdout d'un autre programme (ou de la matrice pour l'instant)
- * --prod  : joue le role d'une banque / brokeur. Génère les prix de facon dynamique (nécessite plusieurs clients assez dur a mettre en place) 
- */
 
 enum class OrderType { BUY, SELL };
 
