@@ -1,14 +1,20 @@
+/**
+ * @file book_order.h
+ * @brief Order/Trade data model, the price-time priority matching engine
+ *        (OrderBook) and the per-stock aggregate (Action).
+ */
 #pragma once
 
 #include "header.h"
 #include <cmath>
 
+/** Extra fee charged per 10% of traded volume above the day's traded volume (see Action::compute_penalty). */
 #define PENALTY_RATE 0.01 // 1% per 10% above the traded volume
 
-/** Standalone entity managing order books. */
-
+/** Side of a limit order. */
 enum class OrderType { BUY, SELL };
 
+/** A single limit order submitted to an OrderBook. */
 struct Order {
     std::string buying_client;
     std::string selling_client;
@@ -17,6 +23,7 @@ struct Order {
     long long quantity;    // Number of shares requested
 };
 
+/** A completed (partial or full) match between a buy order and a sell order. */
 struct Trade {
     std::string transaction_id;
     std::string ticker;
@@ -27,6 +34,13 @@ struct Trade {
     time_t      timestamp;
 };
 
+/**
+ * @brief Price-time priority matching engine for a single stock.
+ *
+ * Bids are kept sorted highest-price-first and asks lowest-price-first in
+ * two multimaps; process_order() is the single entry point used to submit
+ * new orders and trigger matching.
+ */
 class OrderBook {
 private:
     // Sorted by descending price (highest buy price first)
@@ -41,7 +55,12 @@ public:
     double best_ask = 0.0;
     std::vector<Trade> trade_history; // history of past trades
 
-    // Master function: adds an order and tries to match it (Matching Engine)
+    /**
+     * @brief Submits an order to the book: matches it against the opposite
+     *        side (match_buy_order/match_sell_order), then refreshes
+     *        best_bid/best_ask.
+     * @param new_order Order to insert; routed by its `side`.
+     */
     void process_order(const Order& new_order) {
         if (new_order.side == OrderType::BUY) {
             match_buy_order(new_order);
@@ -52,6 +71,14 @@ public:
     }
 
 private:
+    /**
+     * @brief Records a match between two orders in trade_history and reduces
+     *        both orders' remaining quantity accordingly.
+     * @param buyer Buy-side order (mutated: quantity decremented).
+     * @param seller Sell-side order (mutated: quantity decremented).
+     * @param trade_price Price at which the trade is executed.
+     * @return Quantity actually traded (min of both remaining quantities).
+     */
     long long execute_trade(Order &buyer, Order &seller, double trade_price){
         long long traded_qty = std::min(buyer.quantity, seller.quantity);
 
@@ -73,12 +100,25 @@ private:
         return traded_qty;
     }
 
+    /**
+     * @brief Derives a (non-cryptographic) transaction id from the two
+     *        counterparties, the trade price and the current time.
+     * @return First 32 characters of the concatenated raw string.
+     */
     std::string generate_transaction_id(const Order& buyer, const Order& seller, double price){
         std::ostringstream raw;
         raw << buyer.buying_client << seller.selling_client << std::fixed << std::setprecision(2) << price << std::time(nullptr); // hash
         return raw.str().substr(0, 32);
     }
 
+    /**
+     * @brief Matches an incoming buy order against the resting asks
+     *        (cheapest first) while its price covers the best ask.
+     * @note Reduces quantities in place; any unfilled remainder is queued
+     *       into `bids`. Does not call execute_trade() and does not append
+     *       to trade_history.
+     * @param buy_order Incoming order (passed by value; consumed).
+     */
     void match_buy_order(Order buy_order) {
         // While there are sellers and the buy price covers the cheapest ask
         while (!OrderBook::asks.empty() && buy_order.price >= asks.begin()->first && buy_order.quantity > 0) {
@@ -103,6 +143,14 @@ private:
         }
     }
 
+    /**
+     * @brief Matches an incoming sell order against the resting bids
+     *        (highest first) while its price is covered by the best bid.
+     * @note Reduces quantities in place; any unfilled remainder is queued
+     *       into `asks`. Does not call execute_trade() and does not append
+     *       to trade_history.
+     * @param sell_order Incoming order (passed by value; consumed).
+     */
     void match_sell_order(Order sell_order) {
     while (!bids.empty() && sell_order.price <= bids.begin()->first && sell_order.quantity > 0) {
         auto best_bid_it = bids.begin();
@@ -123,12 +171,14 @@ private:
     }
 }
 
+    /** @brief Refreshes best_bid/best_ask from the current top of each side. */
     void update_market_prices() {
         if (!OrderBook::bids.empty()) best_bid = OrderBook::bids.begin()->first;
         if (!OrderBook::asks.empty()) best_ask = OrderBook::asks.begin()->first;
     }
 
     public:
+        /** @brief Prints the current resting asks and bids for `ticker` to stdout (debug helper). */
         void print_orderbook(const std::string& ticker) const {
             std::cout << "\n=== ORDER BOOK " << ticker << " ===\n";
             std::cout << "ASKS (sellers):\n";
@@ -142,6 +192,7 @@ private:
                         << ";" << price << ";" << order.buying_client << "\n";
         }
 
+        /** @brief Prints trade_history entries for `ticker` to stdout (debug helper). */
         void print_trade_history(const std::string& ticker) const {
             std::cout << "\n=== TRADE HISTORY " << ticker << " ===\n";
             for (auto& t : trade_history)
@@ -151,6 +202,7 @@ private:
         }
 };
 
+/** @brief Per-stock aggregate: identity, reference data and its OrderBook. */
 class Action {
 public:
     std::string id;               // stock name
@@ -160,6 +212,15 @@ public:
 
     OrderBook order_book;         // order book for this stock
 
+    /**
+     * @brief Extra fee fraction charged when an order size `x` exceeds 10%
+     *        of current_volume, growing linearly with the excess.
+     * @param x Order quantity being evaluated.
+     * @return Penalty rate to add to BUY_FEE_RATE/SELL_FEE_RATE (0 if
+     *         current_volume is 0, the threshold is non-positive, or x is
+     *         under the threshold... note: a negative excess yields a
+     *         negative penalty, effectively a discount).
+     */
     float compute_penalty(long long x) {
         if (current_volume == 0.0f) return 0.0f;
         long long threshold = 0.1 * current_volume; // 10% of total traded volume for now

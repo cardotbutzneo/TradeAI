@@ -1,3 +1,10 @@
+/**
+ * @file run_market_simulation.cpp
+ * @brief The tick-by-tick simulation loop: broadcasts prices over stdout
+ *        ("TICK;...") and processes client BUY/SELL orders read from
+ *        order_queue, replying with "ACK;..." lines (see
+ *        include/run_simulation.h).
+ */
 #include "../include/header.h"
 #include "../include/log.h"
 #include "../include/bourse.h"
@@ -12,6 +19,7 @@
 // Default account used for every order until multi-account routing (CTO/PEA) is wired up client-side.
 static const std::string DEFAULT_ACCOUNT = "CTO";
 
+/** @brief Reads one line from stdin and checks it equals "START" (handshake performed after REGISTER, before the simulation loop starts). */
 bool validate_start_signal(Logger& logger) {
     std::string signal;
     if (!std::getline(std::cin, signal)) {
@@ -22,6 +30,11 @@ bool validate_start_signal(Logger& logger) {
     return signal == "START";
 }
 
+/**
+ * @brief Prints one "TICK;<date>;TICKER:price:volume,..." line to stdout
+ *        for every stock that has a price at `current_col` (price != -1).
+ * @note Sleeps 100ms per stock unless `args.at("fast") == "true"`.
+ */
 static void send_ticks(const FinancialNDArray& matrix,
                        const std::vector<IndexMap>& stock_index,
                        const std::vector<IndexMap>& date_index,
@@ -52,6 +65,16 @@ static void send_ticks(const FinancialNDArray& matrix,
     cout << endl;
 }
 
+/**
+ * @brief Validates and executes a BUY order for `client` on `ticker`: checks
+ *        quantity and available cash (verify_buy), submits the order to the
+ *        stock's OrderBook, records the trade (record_trade) and prints an
+ *        "ACK;..." line.
+ * @details Prints REJECT_INVALID_QTY (qty <= 0) or REJECT_NO_CASH
+ *          (verify_buy fails, checking price*qty plus BUY_FEE_RATE only),
+ *          otherwise OK;<new cash balance>. The cash actually debited via
+ *          record_trade additionally includes Action::compute_penalty.
+ */
 static void execute_buy(Client& client,
                         int stock_idx,
                         std::map<std::string, Action>& stocks,
@@ -78,6 +101,14 @@ static void execute_buy(Client& client,
     cout << "ACK;" << client.id << ";OK;" << account.cash << "|";
 }
 
+/**
+ * @brief Validates and executes a SELL order for `client` on `ticker`: checks
+ *        quantity and share ownership (verify_sell), submits the order to
+ *        the stock's OrderBook, records the trade (record_trade, net of fee
+ *        and Action::compute_penalty) and prints an "ACK;..." line.
+ * @details Prints REJECT_INVALID_QTY (qty <= 0), REJECT_NO_SHARES
+ *          (verify_sell fails), otherwise OK;<new cash balance>.
+ */
 static void execute_sell(Client& client,
                          int stock_idx,
                          std::map<std::string, Action>& stocks,
@@ -104,6 +135,17 @@ static void execute_sell(Client& client,
     cout << "ACK;" << client.id << ";OK;" << account.cash << "|";
 }
 
+/**
+ * @brief Parses and executes every order in one client's raw order line and
+ *        prints the resulting "ACK;..." replies (one segment per order),
+ *        terminated by a newline.
+ *
+ * Expected format: "<client_id>|<ACTION>;<ticker>;<qty>|<ACTION>;...|" or
+ * "<client_id>|PASS". Unknown clients, malformed orders, invalid
+ * quantities, unknown tickers, missing prices at `current_col` and unknown
+ * actions are each rejected with a specific ACK reason without aborting the
+ * remaining orders on the line.
+ */
 static void process_order_line(const string& order_line,
                                std::map<std::string, Client>& clients,
                                std::map<std::string, Action>& stocks,
@@ -187,6 +229,7 @@ static void process_order_line(const string& order_line,
     cout << endl;
 }
 
+// See include/run_simulation.h for the full parameter documentation.
 void run_simulation(const FinancialNDArray& matrix,
                     const std::vector<IndexMap>& stock_index,
                     const std::vector<IndexMap>& date_index,

@@ -1,3 +1,9 @@
+/**
+ * @file utils.cpp
+ * @brief CLI parsing, the stdin order-reader thread, client
+ *        registration/trade recording and price-matrix loading (see
+ *        include/load_ressorces.h).
+ */
 #include "../include/header.h"
 #include "../include/bourse.h"
 #include "../include/book_order.h"
@@ -12,9 +18,18 @@
 #include <iomanip>
 //#include <openssl/sha.h>
 
+/** Pending raw order lines received from stdin (see read_orders()); guarded by queue_mutex. */
 std::queue<std::string> order_queue;
+/** Guards concurrent access to order_queue between the reader thread and the simulation loop. */
 std::mutex queue_mutex;
 
+/**
+ * @brief Parses `argv` into {"mode", "fast", "input"}.
+ * @details `argv[1]` must be "prod" or "train", otherwise the process exits
+ *          with ExitCode::INVALIDE_ARG. Remaining args: "--fast" sets
+ *          `args["fast"] = "true"`; the first other argument becomes
+ *          `args["input"]`.
+ */
 std::map<std::string, std::string> parse_arguments(int argc, char *argv[]) {
     Logger logger;
     std::map<std::string, std::string> args;
@@ -47,6 +62,7 @@ std::map<std::string, std::string> parse_arguments(int argc, char *argv[]) {
     return args;
 }
 
+/** @brief Reads lines from stdin until EOF, pushing each onto order_queue under queue_mutex. Meant to run on a dedicated thread (see main.cpp). */
 void read_orders() {
     std::string line;
     while (std::getline(std::cin, line)) {
@@ -55,6 +71,7 @@ void read_orders() {
     }
 }
 
+/** @brief Linear-scans `stock_index[0..nb_stocks)` for the entry whose `.index == index`; returns "UNKNOWN" if none matches. */
 string get_ticker_name(const vector<IndexMap>& stock_index, int index, int nb_stocks) {
     for (int i = 0; i < nb_stocks; i++) {
         if (stock_index[i].index == index) return stock_index[i].key;
@@ -62,6 +79,7 @@ string get_ticker_name(const vector<IndexMap>& stock_index, int index, int nb_st
     return "UNKNOWN";
 }
 
+/** @brief Creates a Client with "CTO" and "PEA" accounts, each seeded with `initial_cash` and `nb_stocks` zeroed share positions, and inserts it into `clients` keyed by `client_id`. */
 void add_new_client(std::map<std::string, Client>& clients,
                     const std::string& client_id,
                     const std::string& client_name,
@@ -84,6 +102,13 @@ void add_new_client(std::map<std::string, Client>& clients,
     clients[client_id] = new_client;
 }
 
+/**
+ * @brief Parses a "REGISTER;id1:cash1|id2:cash2|..." line and registers
+ *        each client via add_new_client().
+ * @details Entries missing a ':' are skipped; an unparsable cash value
+ *          falls back to 1000.0.
+ * @return false if `line` does not start with "REGISTER;"; true otherwise.
+ */
 bool parse_register_line(const std::string& line,
                          std::map<std::string, Client>& clients,
                          int nb_stocks) {
@@ -138,6 +163,14 @@ std::string generate_transaction_id(const std::string& buyer,
     return hex.str();
 }
 */
+/**
+ * @brief Records a Trade against `client`'s `account_type` portfolio: adjusts
+ *        `shares_owned[stock_idx]` (+qty on BUY, -qty on SELL), applies
+ *        `cash_delta` to the account's cash, and appends the Trade to its
+ *        trade_history.
+ * @note No-op if `account_type` is not one of the client's portfolios.
+ * @param cash_delta Signed cash adjustment (negative for BUY, positive for SELL), pre-computed by the caller.
+ */
 void record_trade(Client& client,
                   const std::string& account_type,  // "CTO" or "PEA"
                   const std::string& ticker,
@@ -176,7 +209,12 @@ void record_trade(Client& client,
     account.trade_history.push_back(t);
 }
 
-// Loads the price matrix (from a CSV file in "train" mode, or from stdin in "prod" mode)
+/**
+ * @brief Loads the price matrix: from `args["input"]` (CSV file) in "train"
+ *        mode, or from stdin in "prod" mode, via read_file().
+ * @return The parsed matrix, or nullptr if the input file is missing/empty
+ *         (train mode) or the stream yields no data.
+ */
 std::unique_ptr<FinancialNDArray> get_price_matrix(const std::map<std::string, std::string>& args,
                     vector<IndexMap>& stock_index,
                     vector<IndexMap>& date_index,

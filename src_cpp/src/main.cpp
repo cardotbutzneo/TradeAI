@@ -1,3 +1,9 @@
+/**
+ * @file main.cpp
+ * @brief Engine entry point. Orchestrates the startup handshake with the
+ *        Python side over stdin/stdout: load prices -> REGISTER clients ->
+ *        START -> run the tick-by-tick simulation.
+ */
 #include "../include/header.h"
 #include "../include/log.h"
 #include "../include/bourse.h"
@@ -7,6 +13,16 @@
 
 using namespace std;
 
+/**
+ * @brief Program entry point.
+ *
+ * Sequence: parse CLI args -> build the price matrix (get_price_matrix) ->
+ * read and parse the "REGISTER;..." line (parse_register_line) -> reply
+ * "REGISTER;OK" -> wait for "START" (validate_start_signal) -> spawn the
+ * stdin order-reader thread (read_orders) -> run the simulation
+ * (run_simulation) -> print "STOP".
+ * @return An ExitCode value.
+ */
 int main(int argc, char *argv[]) {
     Logger logger;
 
