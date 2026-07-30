@@ -1,0 +1,5 @@
+# Force LF line endings for shell scripts and the makefile so they stay
+# executable when checked out on Windows (CRLF breaks the shebang under WSL).
+*.sh    text eol=lf
+makefile text eol=lf
+run.sh  text eol=lf

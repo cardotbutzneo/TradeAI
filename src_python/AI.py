@@ -1,7 +1,11 @@
+from __future__ import annotations
+
 import numpy as np
-import sys
 from random import randint
-import train_AI
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from .train_AI import NeuralNetwork
 
 """AI.py — Contains the AI class and related classes for stock trading simulation.
 - Stock: Represents a stock with its ticker, historical prices, and quantities."""
@@ -40,18 +44,21 @@ class Stock:
     
 class AI:
     
-    def __init__(self, wallet: float, portfolio : dict, nn : train_AI.NeuralNetwork, tolerance: float = 0.20):
+    def __init__(self, wallet: float, portfolio: dict, nn: "NeuralNetwork" | None = None, tolerance: float = 0.20):
         self.wallet = wallet
         self.tolerance = tolerance
-        self.portfolio = portfolio # {FR001 : [date,prix_achat,quantite]}
+        self.portfolio = portfolio  # {FR001 : [date,prix_achat,quantite]}
         self.history = []
-        self.global_value = wallet 
-        self._nn : train_AI.NeuralNetwork = nn
+        self.global_value = wallet
+        self._nn: "NeuralNetwork" | None = nn
         self._is_train = False
 
     def strat(self, stock: Stock) -> str | None:
         features = compute_features(stock)
         if features is None:
+            return None
+
+        if self._nn is None:
             return None
 
         X = features.reshape(1, -1)

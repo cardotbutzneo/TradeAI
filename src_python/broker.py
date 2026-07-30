@@ -3,7 +3,7 @@ import subprocess
 import sys
 import websockets
 
-from utils.logger import logger
+from .utils.logger import logger
 
 """broker.py — WebSocket broker for the trading simulation.
 - handler_ticks(websocket): Handles incoming tick data from the C++ process and broadcasts it to connected clients.
@@ -55,7 +55,7 @@ async def handler_ordres(websocket):
         clients_connectes.pop(agent_id, None)
         ack_queues.pop(agent_id, None)
 
-async def broker(cpp_path="./src_cpp/main", mode="--train", fast="",
+async def broker(cpp_path="./src_cpp/main", mode="train", fast="",
                  file="", nb_clients=1):
     global process, clients_attendus
     clients_attendus = nb_clients
@@ -74,7 +74,6 @@ async def broker(cpp_path="./src_cpp/main", mode="--train", fast="",
         logger.info("Broker", f"Attente de {nb_clients} client(s)...")
         await clients_prets.wait()
         logger.debug("Broker", f"Tous les clients connectés, démarrage...")
-        await clients_prets.wait()
         logger.debug("Broker", "Envoi START au C++")
         process.stdin.write("START\n")
         process.stdin.flush()

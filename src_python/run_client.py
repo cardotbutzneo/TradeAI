@@ -1,9 +1,9 @@
 import asyncio
 import sys
 import websockets
-from AI import Stock, AI
+from .AI import Stock, AI
 
-from utils.logger import logger
+from .utils.logger import logger
 
 """FIle containing the function to run a client that connects to the broker and receives ticks and sends orders.
 - run_client(url_tick: str, url_ordre: str, agent: AI, agent_id: str): Connects to the broker and handles ticks and orders for a given agent.
@@ -71,4 +71,4 @@ async def run_client(url_tick: str, url_ordre: str,
                         agent.portfolio[stock][2] -= quantity
                         agent.portfolio[stock][1]  = stock_dict[stock].current_price
 
-        logger.info(f"{agent_id}, "f"Fin. Wallet : {agent.wallet:.2f}€")
+        logger.info(f"{agent_id}", f"Fin. Wallet : {agent.wallet:.2f}€")

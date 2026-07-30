@@ -29,10 +29,12 @@ string get_ticker_name(const vector<IndexMap>& index_actions, int index, int nb_
 int main(int argc, char *argv[]) {
     Logger logger;
 
+    logger.debug("C++_Main", "C++ lancé");
+
     string mode = "";
     bool fast = false;
     if (argc == 1) {
-        logger.error("Main", "Erreur pas de mode trouvé.\n Arret du programme...");
+        logger.error("C++_Main", "Erreur pas de mode trouvé.\n Arret du programme...");
         exit(1);
     }
     else if (argc >= 3) mode = argv[1];
@@ -43,7 +45,7 @@ int main(int argc, char *argv[]) {
 
     logger.debug("Main", "Mode: " + mode);
     
-    if (mode != "--prod" && mode != "--train") {
+    if (mode != "prod" && mode != "train") {
         logger.error("Main", "Erreur de parametre : veuillez mettre --train ou --prod");
         exit(1);
     } 
@@ -58,7 +60,7 @@ int main(int argc, char *argv[]) {
     std::ifstream file_stream;
     std::istream* source = nullptr;
 
-    if (mode == "--train") {
+    if (mode == "train") {
         file_stream.open(argv[2]);
         if (!file_stream.is_open()) { logger.error("Main", "Fichier introuvable\n"); return 1; }
         source = &file_stream;

@@ -1,0 +1,26 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "tradeai"
+version = "0.1.0"
+description = "Educational trading simulator with a C++ market engine and Python trading agents."
+readme = "README.md"
+requires-python = ">=3.9"
+authors = [{name = "cardotbutzneo"}]
+keywords = ["trading", "finance", "simulation", "websockets"]
+dependencies = [
+    "numpy>=2.0",
+    "websockets>=10.0",
+    "matplotlib>=3.10",
+]
+
+[tool.setuptools]
+packages = ["src_python"]
+
+[tool.ruff]
+line-length = 88
+
+[project.scripts]
+tradeai = "src_python.cli:main"
