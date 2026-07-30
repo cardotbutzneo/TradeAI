@@ -1,0 +1,122 @@
+/* TradeAI dashboard theme — dark surface, validated categorical palette
+   (see dataviz skill references/palette.md). Dash auto-loads this file. */
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  padding: 0;
+  background: #0d0d0d;
+  font-family: "Segoe UI", system-ui, -apple-system, sans-serif;
+}
+
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-track { background: #0d0d0d; }
+::-webkit-scrollbar-thumb { background: #2c2c2a; border-radius: 6px; }
+::-webkit-scrollbar-thumb:hover { background: #383835; }
+
+.app-root {
+  min-height: 100vh;
+  width: 100%;
+  color: #ffffff;
+}
+
+/* ---------- Header ---------- */
+.app-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 32px;
+  background: #0d0d0d;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  position: sticky;
+  top: 0;
+  z-index: 10;
+}
+
+.brand { display: flex; align-items: center; gap: 12px; }
+.brand-logo { width: 34px; height: 34px; flex-shrink: 0; }
+.brand-text { display: flex; flex-direction: column; line-height: 1.25; }
+.brand-name { font-size: 20px; font-weight: 700; letter-spacing: 0.2px; }
+.brand-tag { font-size: 12px; color: #898781; }
+
+.header-status { display: flex; align-items: center; gap: 16px; }
+.tick-counter { color: #898781; font-size: 13px; }
+
+.badge {
+  font-weight: 600;
+  font-size: 12px;
+  letter-spacing: 0.3px;
+  padding: 5px 14px;
+  border-radius: 20px;
+  border: 1px solid currentColor;
+  white-space: nowrap;
+}
+.badge-good { color: #0ca30c; }
+.badge-warning { color: #fab219; }
+.badge-muted { color: #898781; }
+
+/* ---------- Stat tiles ---------- */
+.stat-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+  gap: 14px;
+  padding: 20px 32px 4px;
+}
+
+.stat-tile {
+  background: #1a1a19;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 10px;
+  padding: 14px 18px;
+  transition: border-color 0.15s ease;
+}
+.stat-tile:hover { border-color: rgba(255, 255, 255, 0.2); }
+
+.stat-label {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  color: #898781;
+  margin-bottom: 8px;
+}
+.stat-value { font-size: 24px; font-weight: 600; }
+.stat-delta { font-size: 13px; font-weight: 600; margin-top: 4px; }
+
+/* ---------- Layout ---------- */
+.card {
+  background: #1a1a19;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 12px;
+  padding: 16px 18px;
+}
+.card-title {
+  margin: 0 0 10px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #c3c2b7;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+.section-card { margin: 16px 32px; }
+
+/* ---------- Leaderboard table ---------- */
+.lb-scroll { overflow-x: auto; }
+.lb-table { width: auto; min-width: 60%; border-collapse: collapse; font-size: 14px; white-space: nowrap; }
+.lb-table th {
+  text-align: left;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: #898781;
+  padding: 8px 22px 8px 8px;
+  border-bottom: 1px solid #2c2c2a;
+}
+.lb-table td {
+  padding: 9px 22px 9px 8px;
+  border-bottom: 1px solid #2c2c2a;
+  font-variant-numeric: tabular-nums;
+}
+.lb-row { transition: background-color 0.12s ease; }
+.lb-row:hover { background-color: rgba(255, 255, 255, 0.035); }
+.lb-empty { color: #898781; font-size: 13px; padding: 12px 4px; }

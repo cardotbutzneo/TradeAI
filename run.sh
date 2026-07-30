@@ -23,9 +23,9 @@ usage() {
     cat <<EOF
 Usage:
   $0 help [command|all]
-  $0 --generate [--file OUT] [--fdate YYYY-MM-DD] [--dur DAYS]
-  $0 --train FILE [--fast] [--clients N]
-  $0 --prod [--fast] [--clients N]
+  $0 --generate [--file=OUT] [--fdate=YYYY-MM-DD] [--dur=DAYS]
+  $0 train FILE [--fast] [--clients N]
+  $0 prod [--fast] [--clients N]
   $0 --clean [all]
 EOF
     exit 1
