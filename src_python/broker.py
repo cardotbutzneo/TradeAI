@@ -2,6 +2,7 @@ import asyncio
 import subprocess
 import sys
 import websockets
+import time
 
 from .utils.logger import logger
 from .utils.utils import Return_code
@@ -14,6 +15,7 @@ from .utils.utils import Return_code
 process = None
 clients_ticks:   set = set() # tick sur un port précis
 clients_connectes: dict[str, websockets.WebSocketServerProtocol] = {}  # id → websocket
+valeur_clients : dict[str, float] = {} # sauvegarde pour plus de facilité lors de l'envoie des données
 ack_queues: dict[str, asyncio.Queue] = {}  # id → queue d'ACKs
 # broker.py
 clients_attendus = 0  # nombre de clients attendus
@@ -29,11 +31,16 @@ async def handler_ticks(websocket):
 
 async def handler_ordres(websocket):
     global clients_attendus
-    agent_id = await websocket.recv()
+    init_msg = await websocket.recv()
+    agent_id, solde_str = init_msg.split(";")
+    solde = float(solde_str)
+    logger.debug("Broker", f"{agent_id=}-{solde=}")
+
     clients_connectes[agent_id] = websocket
     ack_queues[agent_id] = asyncio.Queue()
+    valeur_clients[agent_id] = solde
 
-    await websocket.send(f"REGISTERED;{agent_id}")
+    await websocket.send(f"REGISTERED;{agent_id};OK")
     logger.info("Broker", f"{agent_id} enregistré ({len(clients_connectes)}/{clients_attendus})")
 
     # Signal quand tous les clients sont connectés
@@ -74,16 +81,25 @@ async def broker(cpp_path="./src_cpp/main", mode="train", fast="",
                websockets.serve(handler_ordres, "127.0.0.1", 8766):
         logger.info("Broker", f"Attente de {nb_clients} client(s)...")
 
-        logger.info("Broker", "Déclaration des clients au C++...")
+        try:
+            await asyncio.wait_for(clients_prets.wait(), timeout=10.0)
+        except asyncio.TimeoutError:
+            logger.error(
+                "Broker",
+                "Délai d'attente dépassé : tous les clients ne se sont pas connectés.",
+            )
+            exit(Return_code.TIMEOUT)
+
         if len(clients_connectes) > 0:
-            process.stdin.write("REGISTER")
-            format : str = ""
-            for client_id in clients_connectes.keys():
-                format += f"{client_id};{clients_connectes}|"
-            process.stdin.write(f"{format}") # format envoyé: client1;1000|client2;5000
+            logger.info("Broker", "Déclaration des clients au C++...")
+            fmt_str = "|".join(
+                [f"{c_id}:{solde}" for c_id, solde in valeur_clients.items()]
+            )
+            process.stdin.write(f"REGISTER;{fmt_str}\n")
+            process.stdin.flush()
         else:
             logger.error("Broker", "Aucun client connecté. Arret du programme...")
-            exit()
+            return
         
         await clients_prets.wait()
         logger.debug("Broker", f"Tous les clients connectés, démarrage...")

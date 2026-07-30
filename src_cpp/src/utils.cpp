@@ -87,6 +87,9 @@ void add_new_client(std::map<std::string, Client>& clients,
 bool parse_register_line(const std::string& line,
                          std::map<std::string, Client>& clients,
                          int nb_stocks) {
+
+    Logger logger;
+    logger.debug("utils-C++", "Ligne recu pour le REGISTER: " + line);
     const std::string prefix = "REGISTER;";
     if (line.rfind(prefix, 0) != 0) return false;
 
@@ -106,6 +109,8 @@ bool parse_register_line(const std::string& line,
         } catch (...) {
             initial_cash = 1000.0f;
         }
+
+        //logger.debug("utils-C++", "Client " + )        
 
         add_new_client(clients, client_id, client_id, nb_stocks, initial_cash);
     }

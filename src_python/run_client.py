@@ -26,10 +26,10 @@ async def run_client(url_tick: str, url_ordre: str,
                websockets.connect(url_ordre)  as ws_ordre:
 
         # S'enregistre auprès du broker
-        await ws_ordre.send(agent_id)
+        await ws_ordre.send(f"{agent_id};{agent.wallet}")
         confirmation = await ws_ordre.recv()  # attend la confirmation du broker
 
-        if confirmation == f"REGISTERED;{agent_id}":
+        if confirmation == f"REGISTERED;{agent_id};OK":
             logger.info(f"{agent_id}", f"Enregistré avec succès auprès du serveur")
         else:
             logger.info(f"{agent_id}", f"Erreur d'enregistrement : {confirmation}")

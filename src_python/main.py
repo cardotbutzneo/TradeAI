@@ -34,9 +34,9 @@ async def main(mode: str = "train",
         run_client(PORT_ECOUTE_SERVEUR, PORT_ECOUTE_CLIENT,
                    AI(wallet=2000, portfolio={}, nn=None, tolerance=0.10),
                    "agent2", db),
-        """run_client(PORT_ECOUTE_SERVEUR, PORT_ECOUTE_CLIENT,
+        run_client(PORT_ECOUTE_SERVEUR, PORT_ECOUTE_CLIENT,
                    AI(wallet=500, portfolio={}, nn=None, tolerance=0.20),
-                   "agent3", db)""",
+                   "agent3", db),
     )
 
     logger.close()
