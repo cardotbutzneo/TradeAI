@@ -4,14 +4,8 @@
 #include "book_order.h"
 
 struct IndexMap {
-    std::string cle;
+    std::string key;
     int index = 0;
-};
-
-struct Portfolio {
-    float cash        = 0.0f;
-    float total_value = 0.0f;
-    std::vector<int> shares_owned;
 };
 
 struct FinancialNDArray {
@@ -19,18 +13,27 @@ struct FinancialNDArray {
     std::vector<float> data;
 };
 
+struct AccountType {
+    std::string              name;           // "CTO", "PEA"
+    float                    cash;
+    std::vector<int>         shares_owned;   // indexed by stock index
+    std::vector<Trade>       trade_history;
+};
+
 struct Client {
     std::string name;
     std::string id;
+    std::map<std::string, AccountType> portfolios;  // "CTO" -> AccountType
 };
 
-// Déclarations
+// Declarations
 std::unique_ptr<FinancialNDArray> read_file(std::istream& file, const std::string& sep,
-                                            std::vector<IndexMap>& index_actions,
-                                            std::vector<IndexMap>& index_dates,
-                                            std::map<std::string, Action>& liste_des_actions,
-                                            int& nb_actions, int& nb_dates);
-bool  verify_buy(const Portfolio&, float, int);
-bool  verify_sell(const Portfolio&, int, int);
+                                            std::vector<IndexMap>& stock_index,
+                                            std::vector<IndexMap>& date_index,
+                                            std::map<std::string, Action>& stocks,
+                                            std::vector<long long>& volumes,
+                                            int& nb_stocks, int& nb_dates);
+bool  verify_buy(const AccountType&, float, int);
+bool  verify_sell(const AccountType&, int, int);
 float get_price_safe(const FinancialNDArray&, int, int, int);
 float get_average(const float*, int);

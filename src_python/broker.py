@@ -2,8 +2,10 @@ import asyncio
 import subprocess
 import sys
 import websockets
+import time
 
 from .utils.logger import logger
+from .utils.utils import Return_code
 
 """broker.py — WebSocket broker for the trading simulation.
 - handler_ticks(websocket): Handles incoming tick data from the C++ process and broadcasts it to connected clients.
@@ -13,6 +15,7 @@ from .utils.logger import logger
 process = None
 clients_ticks:   set = set() # tick sur un port précis
 clients_connectes: dict[str, websockets.WebSocketServerProtocol] = {}  # id → websocket
+valeur_clients : dict[str, float] = {} # sauvegarde pour plus de facilité lors de l'envoie des données
 ack_queues: dict[str, asyncio.Queue] = {}  # id → queue d'ACKs
 # broker.py
 clients_attendus = 0  # nombre de clients attendus
@@ -28,11 +31,16 @@ async def handler_ticks(websocket):
 
 async def handler_ordres(websocket):
     global clients_attendus
-    agent_id = await websocket.recv()
+    init_msg = await websocket.recv()
+    agent_id, solde_str = init_msg.split(";")
+    solde = float(solde_str)
+    logger.debug("Broker", f"{agent_id=}-{solde=}")
+
     clients_connectes[agent_id] = websocket
     ack_queues[agent_id] = asyncio.Queue()
+    valeur_clients[agent_id] = solde
 
-    await websocket.send(f"REGISTERED;{agent_id}")
+    await websocket.send(f"REGISTERED;{agent_id};OK")
     logger.info("Broker", f"{agent_id} enregistré ({len(clients_connectes)}/{clients_attendus})")
 
     # Signal quand tous les clients sont connectés
@@ -72,9 +80,33 @@ async def broker(cpp_path="./src_cpp/main", mode="train", fast="",
     async with websockets.serve(handler_ticks, "127.0.0.1", 8765), \
                websockets.serve(handler_ordres, "127.0.0.1", 8766):
         logger.info("Broker", f"Attente de {nb_clients} client(s)...")
+
+        try:
+            await asyncio.wait_for(clients_prets.wait(), timeout=10.0)
+        except asyncio.TimeoutError:
+            logger.error(
+                "Broker",
+                "Délai d'attente dépassé : tous les clients ne se sont pas connectés.",
+            )
+            exit(Return_code.TIMEOUT)
+
+        if len(clients_connectes) > 0:
+            logger.info("Broker", "Déclaration des clients au C++...")
+            fmt_str = "|".join(
+                [f"{c_id}:{solde}" for c_id, solde in valeur_clients.items()]
+            )
+            process.stdin.write(f"REGISTER;{fmt_str}\n")
+            process.stdin.flush()
+        else:
+            logger.error("Broker", "Aucun client connecté. Arret du programme...")
+            return
+        
         await clients_prets.wait()
         logger.debug("Broker", f"Tous les clients connectés, démarrage...")
+
         logger.debug("Broker", "Envoi START au C++")
+
+        logger.debug("Broker", f"process: {process.pid}")
         process.stdin.write("START\n")
         process.stdin.flush()
         await lire_cpp()
@@ -113,3 +145,7 @@ async def lire_cpp():
                     await ack_queues[target_id].put(sub_ack)
                 else:
                     logger.info("Broker", f"ACK pour client inconnu : {target_id}")
+
+        elif line.startswith("REGISTER;"):
+            if clients_ticks:
+                await asyncio.gather(*[ws.send(line) for ws in clients_ticks])

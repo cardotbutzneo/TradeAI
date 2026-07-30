@@ -1,16 +1,24 @@
 import asyncio
-import sys
 import websockets
 from .AI import Stock, AI
-
+from .dataBase import Database
+from .utils.utils import Return_code
 from .utils.logger import logger
 
-"""FIle containing the function to run a client that connects to the broker and receives ticks and sends orders.
-- run_client(url_tick: str, url_ordre: str, agent: AI, agent_id: str): Connects to the broker and handles ticks and orders for a given agent.
-"""
+"""File containing the function to run a client that connects to the broker and receives ticks and sends orders."""
+
+def verifier_connexion_cpp(tick, agent_id):
+    if tick.startswith("REGISTER;"):
+        parts = tick.split(";")
+        if parts[1] == "OK":
+            logger.info("Broker", f"Client {agent_id} bien enregistrée aupres du C++")
+            return True
+    else :
+        logger.warn("Broker", f"Authentification de {agent_id} aupres du C++ a échoué")
+        return False
 
 async def run_client(url_tick: str, url_ordre: str,
-                     agent: AI, agent_id: str):
+                     agent: AI, agent_id: str, db: Database):
     await asyncio.sleep(0.5)
     stock_dict: dict[str, Stock] = {}
 
@@ -18,57 +26,117 @@ async def run_client(url_tick: str, url_ordre: str,
                websockets.connect(url_ordre)  as ws_ordre:
 
         # S'enregistre auprès du broker
-        await ws_ordre.send(agent_id)
+        await ws_ordre.send(f"{agent_id};{agent.wallet}")
         confirmation = await ws_ordre.recv()  # attend la confirmation du broker
 
-        if confirmation == f"REGISTERED;{agent_id}":
-            logger.info(f"{agent_id}", f"Enregistré avec succès")
+        if confirmation == f"REGISTERED;{agent_id};OK":
+            logger.info(f"{agent_id}", f"Enregistré avec succès auprès du serveur")
         else:
             logger.info(f"{agent_id}", f"Erreur d'enregistrement : {confirmation}")
-            return
 
-        async for tick in ws_tick:
-            if tick == "STOP": break
-            if not tick.startswith("TICK;"): continue
+        
+        async for message in ws_tick:
+            if message == "STOP":
+                break
 
-            # Accumule l'historique
-            parts = tick.split(";")
-            date  = parts[1]
+            if message.startswith("REGISTER;"):
+                if not verifier_connexion_cpp(message, agent_id):
+                    return Return_code.FAIL_CONNECTION
+                continue
+
+            if not message.startswith("TICK;"):
+                continue
+
+            parts = message.split(";")
+            if len(parts) < 3:
+                logger.warn(agent_id, f"Tick invalide reçu : {message}")
+                continue
+
+            date = parts[1]
             for item in parts[2].split(","):
-                if not item: continue
-                ticker, price, volume = item.split(":")
+                if not item:
+                    continue
+                fields = item.split(":")
+                if len(fields) != 3:
+                    logger.warn(agent_id, f"Tick mal formé : {item}")
+                    continue
+                ticker, price_str, volume_str = fields
+                try:
+                    price = float(price_str)
+                    volume = int(volume_str)
+                except ValueError:
+                    logger.warn(agent_id, f"Tick contient des valeurs invalides : {item}")
+                    continue
+
                 if ticker not in stock_dict:
                     stock_dict[ticker] = Stock(ticker=ticker)
                     agent.portfolio[ticker] = [date, -1, 0]
-                stock_dict[ticker].historic_price.append(float(price))
-                stock_dict[ticker].historic_quantity.append(int(volume))
-                stock_dict[ticker].total_quantity += int(volume)
+
+                stock = stock_dict[ticker]
+                stock.historic_price.append(price)
+                stock.historic_quantity.append(volume)
+                stock.total_quantity += volume
 
             decisions = agent.trade(stock_dict)
-
-            logger.info(f"Python-Debug {agent_id=}", f"decision : {decisions}")
+            logger.info(agent_id, f"Décision : {decisions}")
 
             if decisions == ["PASS"]:
                 await ws_ordre.send("PASS")
-                await ws_ordre.recv()  # ACK ignoré pour PASS
+                await ws_ordre.recv()
                 continue
 
             await ws_ordre.send("|".join(decisions))
             ack = await ws_ordre.recv()
-            logger.info(f"{agent_id}", f"ACK reçu : {ack}")
+            logger.info(agent_id, f"ACK reçu : {ack}")
 
-            # Mise à jour portfolio
-            for idx, decision in enumerate(decisions):
-                parts_d          = decision.split(";")
-                action, stock, quantity = parts_d[0], parts_d[1], int(parts_d[2])
-                if "OK" in ack:
-                    nouveau_cash = float(ack.split(";")[3]) if len(ack.split(";")) > 3 else agent.wallet
-                    agent.wallet = nouveau_cash
-                    if action == "BUY":
-                        agent.portfolio[stock][2] += quantity
-                        agent.portfolio[stock][1]  = stock_dict[stock].current_price
-                    elif action == "SELL":
-                        agent.portfolio[stock][2] -= quantity
-                        agent.portfolio[stock][1]  = stock_dict[stock].current_price
+            await update_portfolio(agent_id, decisions, ack, agent, stock_dict, db)
 
-        logger.info(f"{agent_id}", f"Fin. Wallet : {agent.wallet:.2f}€")
+        logger.info(agent_id, f"Fin. Wallet : {agent.wallet:.2f}€")
+
+async def update_portfolio(agent_id: str,
+                           decisions: list[str],
+                           ack: str,
+                           agent: AI,
+                           stock_dict: dict[str, Stock],
+                           db: Database):
+    parts = ack.split(";")
+    if len(parts) < 3:
+        logger.warn(agent_id, f"ACK mal formé : {ack}")
+        return
+
+    status = parts[2]
+    cash_after = agent.wallet
+    if status == "OK" and len(parts) >= 4:
+        try:
+            cash_after = float(parts[3])
+        except ValueError:
+            logger.warn(agent_id, f"Impossible de lire le cash dans ACK : {parts[3]}")
+
+    if status != "OK":
+        logger.warn(agent_id, f"Ordre rejeté par le moteur : {ack}")
+        return
+
+    agent.wallet = cash_after
+
+    for decision in decisions:
+        action, stock_symbol, quantity_str = decision.split(";")
+        quantity = int(quantity_str)
+        if stock_symbol not in stock_dict:
+            logger.warn(agent_id, f"Stock inconnu pour mise à jour : {stock_symbol}")
+            continue
+
+        stock = stock_dict[stock_symbol]
+        price = stock.current_price
+
+        if action == "BUY":
+            agent.portfolio[stock_symbol][2] += quantity
+            agent.portfolio[stock_symbol][1] = price
+        elif action == "SELL":
+            agent.portfolio[stock_symbol][2] = max(0, agent.portfolio[stock_symbol][2] - quantity)
+            agent.portfolio[stock_symbol][1] = price
+
+        db.insert_trade(agent_id, stock_symbol, action, price, quantity, agent.wallet)
+        db.update_portfolio(agent_id, stock_symbol,
+                            agent.portfolio[stock_symbol][2],
+                            agent.portfolio[stock_symbol][1])
+    

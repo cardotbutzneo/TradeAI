@@ -1,5 +1,15 @@
 import json
 import sys
+from enum import Enum
+
+class Return_code(Enum):
+    SUCCESS = 0
+    CONFIG_ERROR = 3
+    PORT_BIND_FAILED = 4
+    ENGINE_CRASH = 5
+    INVALIDE_ARG = 6
+    FAIL_CONNECTION = 7
+    TIMEOUT = 255
 
 def get_settings():
     try:

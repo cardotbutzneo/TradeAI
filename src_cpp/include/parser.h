@@ -4,9 +4,9 @@
 #include "bourse.h"
 
 std::unique_ptr<FinancialNDArray> read_file(std::istream& file, const std::string& sep,
-                                            std::vector<IndexMap>& index_actions,
-                                            std::vector<IndexMap>& index_dates,
-                                            std::map<std::string, Action>& liste_des_actions,
-                                            std::vector<long long>& liste_des_quantites,
-                                            int& nb_actions, int& nb_dates);
+                                            std::vector<IndexMap>& stock_index,
+                                            std::vector<IndexMap>& date_index,
+                                            std::map<std::string, Action>& stocks,
+                                            std::vector<long long>& volumes,
+                                            int& nb_stocks, int& nb_dates);
 std::string trim(const std::string& str);
