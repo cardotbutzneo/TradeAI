@@ -31,6 +31,7 @@ async def run_client(url_tick: str, url_ordre: str,
 
         if confirmation == f"REGISTERED;{agent_id};OK":
             logger.info(f"{agent_id}", f"Enregistré avec succès auprès du serveur")
+            db.register_agent(agent_id, agent.wallet, getattr(agent, "strategy", ""))
         else:
             logger.info(f"{agent_id}", f"Erreur d'enregistrement : {confirmation}")
 
@@ -76,6 +77,7 @@ async def run_client(url_tick: str, url_ordre: str,
                 stock.historic_price.append(price)
                 stock.historic_quantity.append(volume)
                 stock.total_quantity += volume
+                db.insert_tick(ticker, price, volume, date)
 
             decisions = agent.trade(stock_dict)
             logger.info(agent_id, f"Décision : {decisions}")
@@ -89,16 +91,18 @@ async def run_client(url_tick: str, url_ordre: str,
             ack = await ws_ordre.recv()
             logger.info(agent_id, f"ACK reçu : {ack}")
 
-            await update_portfolio(agent_id, decisions, ack, agent, stock_dict, db)
+            await update_portfolio(agent_id, decisions, ack, agent, stock_dict, db, date)
 
         logger.info(agent_id, f"Fin. Wallet : {agent.wallet:.2f}€")
+        db.mark_finished(agent_id, agent.wallet)
 
 async def update_portfolio(agent_id: str,
                            decisions: list[str],
                            ack: str,
                            agent: AI,
                            stock_dict: dict[str, Stock],
-                           db: Database):
+                           db: Database,
+                           date: str):
     # Le C++ répond avec une ligne ACK par ordre envoyé, jointes par "|" dans
     # le même ordre que `decisions` (voir process_order_line côté C++ et le
     # dépilage par nombre d'ordres dans broker.handler_ordres). Chaque ACK ne
@@ -112,6 +116,7 @@ async def update_portfolio(agent_id: str,
     for decision, ack_segment in zip(decisions, ack_segments):
         action, stock_symbol, quantity_str = decision.split(";")
         quantity = int(quantity_str)
+        price = stock_dict[stock_symbol].current_price if stock_symbol in stock_dict else 0.0
 
         parts = ack_segment.split(";")
         if len(parts) < 3:
@@ -121,6 +126,8 @@ async def update_portfolio(agent_id: str,
 
         if status != "OK":
             logger.warn(agent_id, f"Ordre rejeté par le moteur : {ack_segment}")
+            db.insert_trade(agent_id, stock_symbol, action, price,
+                            quantity, agent.wallet, status=status, date=date)
             continue
 
         if len(parts) >= 4:
@@ -143,7 +150,8 @@ async def update_portfolio(agent_id: str,
             agent.portfolio[stock_symbol][2] = max(0, agent.portfolio[stock_symbol][2] - quantity)
             agent.portfolio[stock_symbol][1] = price
 
-        db.insert_trade(agent_id, stock_symbol, action, price, quantity, agent.wallet)
+        db.insert_trade(agent_id, stock_symbol, action, price, quantity, agent.wallet,
+                        status="OK", date=date)
         db.update_portfolio(agent_id, stock_symbol,
                             agent.portfolio[stock_symbol][2],
                             agent.portfolio[stock_symbol][1])

@@ -1,19 +1,21 @@
 """app.py — TradeAI live dashboard (Plotly Dash).
 
-A read-only visualizer for the trading simulation. It repeatedly parses the
-log the simulation already writes (``logs/simulation.log``) and renders, live:
+A read-only visualizer for the trading simulation. It repeatedly reads the
+SQLite database the simulation already writes to (``data/trading.db``) and
+renders, live:
 
   * KPI tiles (ticks, agents, trades, best performer),
   * a leaderboard of the agents ranked by net worth,
   * net-worth (equity) curves over time,
   * price charts per ticker with each agent's executed BUY/SELL markers.
 
-It imports nothing from the simulation — it only reads the log file. Start this
-BEFORE or DURING a run; charts refresh automatically every ~0.8s.
+It imports nothing from the simulation, and every DB connection is opened
+read-only — it only ever reads. Start this BEFORE or DURING a run; charts
+refresh automatically every ~0.8s.
 
 Run:
     python3 app.py                 # then open http://127.0.0.1:8050
-    TRADEAI_LOG=/path/to/log python3 app.py
+    TRADEAI_DB=/path/to/trading.db python3 app.py
 """
 
 from __future__ import annotations
@@ -25,13 +27,13 @@ from dash import Dash, dcc, html
 from dash.dependencies import Input, Output
 from plotly.subplots import make_subplots
 
-from log_parser import SimState, current_networth, parse_log
+from db_reader import SimState, current_networth, parse_db
 
 # ---------------------------------------------------------------------------
 # Config
 # ---------------------------------------------------------------------------
 HERE = os.path.dirname(os.path.abspath(__file__))
-LOG_PATH = os.environ.get("TRADEAI_LOG", os.path.join(HERE, "..", "logs", "simulation.log"))
+DB_PATH = os.environ.get("TRADEAI_DB", os.path.join(HERE, "..", "data", "trading.db"))
 REFRESH_MS = 800
 
 # ---------------------------------------------------------------------------
@@ -60,6 +62,38 @@ AGENT_COLORS = [
     "#d55181", "#008300", "#9085e9", "#e66767",
 ]
 
+# The simulated market only trades 09:30-17:00 on weekdays (see
+# data_generator.py). On a plain continuous date axis, Plotly draws one
+# straight segment from the last tick of a day to the first tick of the
+# next — a long flat/diagonal line spanning the closed-market gap. These
+# rangebreaks tell it to compress those dead zones out of the axis instead.
+TIME_RANGE_BREAKS = [
+    dict(bounds=["sat", "mon"]),          # no weekend trading
+    dict(bounds=[17, 9.5], pattern="hour"),  # no trading 17:00-09:30
+]
+
+# "1D / 5D / 1M / ..." zoom buttons for the time axis.
+RANGE_SELECTOR_BUTTONS = [
+    dict(count=1, label="1D", step="day", stepmode="backward"),
+    dict(count=5, label="5D", step="day", stepmode="backward"),
+    dict(count=1, label="1M", step="month", stepmode="backward"),
+    dict(count=3, label="3M", step="month", stepmode="backward"),
+    dict(count=6, label="6M", step="month", stepmode="backward"),
+    dict(count=1, label="1Y", step="year", stepmode="backward"),
+    dict(count=5, label="5Y", step="year", stepmode="backward"),
+    dict(step="all", label="Max"),
+]
+
+
+def _range_selector_style() -> dict:
+    return dict(
+        buttons=RANGE_SELECTOR_BUTTONS,
+        bgcolor=SURFACE, activecolor=GRID,
+        bordercolor=BORDER, borderwidth=1,
+        font=dict(color=INK_SECONDARY, size=11, family=FONT),
+        y=1.14, x=0, xanchor="left",
+    )
+
 
 def agent_color(idx: int) -> str:
     return AGENT_COLORS[idx % len(AGENT_COLORS)]
@@ -84,7 +118,7 @@ def _base_layout(fig: go.Figure, title: str, height: int, legend_pos: str = "top
         paper_bgcolor=SURFACE,
         plot_bgcolor=SURFACE,
         font=dict(color=INK_SECONDARY, family=FONT, size=12),
-        margin=dict(l=48, r=20, t=52, b=36),
+        margin=dict(l=48, r=20, t=72, b=36),  # extra top room for the range-selector row
         height=height,
         legend=legend,
         hovermode="x unified",
@@ -122,7 +156,9 @@ def build_networth_fig(state: SimState) -> go.Figure:
             text="No data yet — start a simulation",
             showarrow=False, font=dict(color=INK_MUTED, size=13),
         )
-    return _base_layout(fig, "Net worth over time", 360)
+    fig = _base_layout(fig, "Net worth over time", 390)
+    fig.update_xaxes(rangebreaks=TIME_RANGE_BREAKS, rangeselector=_range_selector_style())
+    return fig
 
 
 def build_price_fig(state: SimState) -> go.Figure:
@@ -179,8 +215,20 @@ def build_price_fig(state: SimState) -> go.Figure:
                     row=r, col=c,
                 )
 
-    fig = _base_layout(fig, "Prices & executed trades", 280 * rows + 40, legend_pos="bottom")
+    fig = _base_layout(fig, "Prices & executed trades", 280 * rows + 70, legend_pos="bottom")
     fig.update_annotations(font=dict(color=INK_SECONDARY, size=13, family=FONT))
+    fig.update_layout(margin=dict(t=96))  # extra room: subplot titles + range-selector row
+
+    # Compress out closed-market hours/weekends on every ticker subplot, and
+    # put a single range-selector on the first one; every other subplot's
+    # x-axis is `matches`-locked to it so the buttons zoom all tickers at once.
+    fig.update_xaxes(rangebreaks=TIME_RANGE_BREAKS)
+    if tickers:
+        fig.update_xaxes(rangeselector=_range_selector_style(), row=1, col=1)
+        for i in range(1, len(tickers)):
+            r, c = i // cols + 1, i % cols + 1
+            fig.update_xaxes(matches="x", row=r, col=c)
+
     return fig
 
 
@@ -341,7 +389,7 @@ app.layout = html.Div(
     Input("refresh", "n_intervals"),
 )
 def refresh(_n):
-    state = parse_log(LOG_PATH)
+    state = parse_db(DB_PATH)
     counter = f"{state.n_ticks} ticks · {len(state.agents)} agents"
     return (
         build_networth_fig(state),
@@ -354,6 +402,6 @@ def refresh(_n):
 
 
 if __name__ == "__main__":
-    print(f"[dashboard] reading log: {LOG_PATH}")
+    print(f"[dashboard] reading db: {DB_PATH}")
     print("[dashboard] open http://127.0.0.1:8050")
     app.run(host="127.0.0.1", port=8050, debug=False)
