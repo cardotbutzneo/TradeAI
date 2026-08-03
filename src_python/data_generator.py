@@ -11,6 +11,13 @@ import argparse
 - parser_arguments(): Parses command-line arguments for start date and duration
 - generer_flux_bourse(date_actuelle, ticker, prix_initial, jours, devise): Generates stock market data for a given ticker and writes it to stdout in CSV format"""
 
+def prochain_jour_ouvre(date_actuelle):
+    """Avance la date au prochain jour ouvré (lundi-vendredi) : les actions
+    ne sont pas cotées le week-end, même si le carnet d'ordre reste ouvert."""
+    while date_actuelle.weekday() >= 5:  # 5 = samedi, 6 = dimanche
+        date_actuelle += timedelta(days=1)
+    return date_actuelle
+
 def valider_date(chaine_date):
     try:
         return datetime.strptime(chaine_date, "%Y-%m-%d").replace(hour=9, minute=30)
@@ -62,6 +69,7 @@ def generer_flux_bourse(date_actuelle, ticker="GOOG", prix_initial=142.05, jours
 
     prix_actuel = prix_initial
     intervale = timedelta(minutes=5)
+    date_actuelle = prochain_jour_ouvre(date_actuelle)
 
     for j in range(jours):
         for p in range(points_par_jour):
@@ -88,6 +96,7 @@ def generer_flux_bourse(date_actuelle, ticker="GOOG", prix_initial=142.05, jours
             
         date_actuelle = date_actuelle.replace(hour=9, minute=30, second=0)
         date_actuelle += timedelta(days=1) # reviens à 9h le jour d'apres
+        date_actuelle = prochain_jour_ouvre(date_actuelle) # saute le week-end
             # time.sleep(0.1)
 
 if __name__ == "__main__":

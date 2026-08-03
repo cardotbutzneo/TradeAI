@@ -21,6 +21,17 @@ ack_queues: dict[str, asyncio.Queue] = {}  # id → queue d'ACKs
 clients_attendus = 0  # nombre de clients attendus
 clients_prets = asyncio.Event()  # signal "tous connectés"
 
+async def _broadcast(sockets, message):
+    """Send `message` to every socket without letting one already-dead/closing
+    connection abort the others or crash the caller. A client can disconnect
+    (or its write can fail, see handler_ordres) at any point, including in the
+    exact instant the C++ engine is shutting down -- a plain gather() would
+    let that single failure propagate and take down the whole broker() task."""
+    results = await asyncio.gather(*[ws.send(message) for ws in sockets], return_exceptions=True)
+    for result in results:
+        if isinstance(result, Exception):
+            logger.warn("Broker", f"Envoi échoué vers un client déjà déconnecté : {result!r}")
+
 async def handler_ticks(websocket):
     """Connexion en lecture seule pour recevoir les TICKs"""
     clients_ticks.add(websocket)
@@ -50,15 +61,33 @@ async def handler_ordres(websocket):
     try:
         async for message in websocket:
             if message == "PASS":
-                process.stdin.write(f"{agent_id}|PASS\n")
+                order_line = f"{agent_id}|PASS\n"
+                nb_orders = 1
             else:
                 # Format vers C++ : "agent1|BUY;GOOG;10|BUY;AMZ;5"
-                process.stdin.write(f"{agent_id}|{message}\n")
-            process.stdin.flush()
+                order_line = f"{agent_id}|{message}\n"
+                # Le C++ répond avec une ligne ACK par ordre reçu (voir
+                # process_order_line côté C++) : il faut donc dépiler
+                # exactement ce nombre d'ACKs avant de répondre au client,
+                # sinon les ACKs en trop restent dans la queue et sont lus
+                # par erreur au tour suivant (désynchronisation permanente).
+                nb_orders = len([o for o in message.split("|") if o])
 
-            # Attend l'ACK du C++ pour ce client
-            ack = await ack_queues[agent_id].get()
-            await websocket.send(ack)
+            try:
+                process.stdin.write(order_line)
+                process.stdin.flush()
+            except (BrokenPipeError, ValueError) as e:
+                # Le moteur C++ a déjà quitté (ex: ordre arrivé juste après le
+                # dernier tick, une fois "STOP" imprimé) : pas d'ACK possible,
+                # on le signale proprement au client plutôt que de laisser
+                # planter la connexion (ce qui cascadait en ConnectionClosedError
+                # ailleurs, cf. rapport.txt).
+                logger.warn("Broker", f"Écriture vers le C++ impossible pour {agent_id} (moteur arrêté) : {e!r}")
+                await websocket.send("|".join([f"ACK;{agent_id};REJECT_ENGINE_STOPPED"] * nb_orders))
+                continue
+
+            acks = [await ack_queues[agent_id].get() for _ in range(nb_orders)]
+            await websocket.send("|".join(acks))
     finally:
         clients_connectes.pop(agent_id, None)
         ack_queues.pop(agent_id, None)
@@ -111,7 +140,14 @@ async def broker(cpp_path="./src_cpp/main", mode="train", fast="",
         process.stdin.flush()
         await lire_cpp()
 
-    process.stdin.close()
+    try:
+        # close() flushes any buffered bytes first; if the C++ process already
+        # exited (the normal case right after "STOP"), that flush can itself
+        # raise BrokenPipeError -- same race as the writes in handler_ordres,
+        # just one step later. The pipe being gone here is expected, not a bug.
+        process.stdin.close()
+    except (BrokenPipeError, OSError) as e:
+        logger.warn("Broker", f"Fermeture du stdin C++ (déjà terminé) : {e!r}")
     process.wait()
 
 async def lire_cpp():
@@ -122,17 +158,24 @@ async def lire_cpp():
         line = line.strip()
         logger.debug("Broker", f"reçu C++ : '{line}'")
 
-        if not line or line == "STOP":
-            # Prévient tous les clients
-            await asyncio.gather(*[ws.send("STOP")
-                                   for ws in clients_connectes.values()])
+        if not line:
+            # Flux stdout fermé sans ligne "STOP" explicite : le process C++
+            # est mort prématurément (crash) plutôt que d'avoir terminé
+            # normalement. On le journalise pour ne pas confondre ça avec
+            # un arrêt propre la prochaine fois que ça arrive.
+            exit_code = process.poll()
+            logger.error("Broker", f"Flux C++ interrompu sans STOP (code retour : {exit_code}).")
+            await _broadcast(list(clients_connectes.values()), "STOP")
+            break
+
+        if line == "STOP":
+            await _broadcast(list(clients_connectes.values()), "STOP")
             break
 
         elif line.startswith("TICK;"):
             # Broadcast à tous les clients
             if clients_ticks:
-                await asyncio.gather(*[ws.send(line)
-                                       for ws in clients_ticks])
+                await _broadcast(list(clients_ticks), line)
 
         elif line.startswith("ACK;"):
             # Format attendu : "ACK;agent1;OK;9713|ACK;agent2;REJECT_NO_CASH"
@@ -148,4 +191,4 @@ async def lire_cpp():
 
         elif line.startswith("REGISTER;"):
             if clients_ticks:
-                await asyncio.gather(*[ws.send(line) for ws in clients_ticks])
+                await _broadcast(list(clients_ticks), line)
