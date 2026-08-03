@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import numpy as np
-from random import randint
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -43,70 +42,175 @@ class Stock:
         return float(np.dot(self.historic_price, self.historic_quantity))
     
 class AI:
-    
-    def __init__(self, wallet: float, portfolio: dict, nn: "NeuralNetwork" | None = None, tolerance: float = 0.20):
+    """Un agent de trading. `strategy` sélectionne le comportement de marché
+    simulé (voir AI.STRATEGIES) ; `tolerance` règle la sensibilité de ce
+    comportement (plus tolerance est faible, plus l'agent réagit vite)."""
+
+    # Gestion du risque, partagée par toutes les stratégies :
+    MAX_POSITION_PCT = 0.30   # jamais plus de 30% du portefeuille sur un seul titre
+    TRADE_SIZE_PCT   = 0.15   # jamais plus de 15% du cash disponible en un seul ordre
+    STOP_LOSS_PCT    = 0.15   # vente forcée si la position perd 15% depuis l'achat
+    MEAN_WINDOW      = 20     # fenêtre glissante pour la moyenne mobile
+
+    def __init__(self, wallet: float, portfolio: dict, nn: "NeuralNetwork" | None = None,
+                 tolerance: float = 0.20, strategy: str = "mean_reversion"):
         self.wallet = wallet
         self.tolerance = tolerance
         self.portfolio = portfolio  # {FR001 : [date,prix_achat,quantite]}
         self.history = []
         self.global_value = wallet
+        self.strategy = strategy
         self._nn: "NeuralNetwork" | None = nn
         self._is_train = False
 
-    def strat(self, stock: Stock) -> str | None:
-        features = compute_features(stock)
-        if features is None:
+    def _held_quantity(self, ticker: str) -> int:
+        return self.portfolio[ticker][2] if ticker in self.portfolio else 0
+
+    def _buy_quantity(self, stock: Stock) -> int:
+        """Taille d'ordre réaliste : plafonnée par le cash dispo et par la
+        part maximale qu'un titre peut représenter dans le portefeuille."""
+        price = stock.current_price
+        if price <= 0:
+            return 0
+
+        position_value = self._held_quantity(stock.ticker) * price
+        max_position_value = self.MAX_POSITION_PCT * max(self.global_value, self.wallet)
+        room = max_position_value - position_value
+        if room <= 0:
+            return 0
+
+        budget = min(self.TRADE_SIZE_PCT * self.wallet, room, self.wallet)
+        return int(budget // price)
+
+    def _stop_loss_signal(self, stock: Stock) -> str | None:
+        """Coupe une position perdante avant toute autre décision, comme le
+        ferait un trader disciplinaire plutôt qu'un joueur qui espère."""
+        ticker = stock.ticker
+        if ticker not in self.portfolio:
             return None
 
-        if self._nn is None:
+        _, avg_price, qty = self.portfolio[ticker]
+        if qty <= 0 or avg_price <= 0:
+            return None
+
+        if stock.current_price <= avg_price * (1 - self.STOP_LOSS_PCT):
+            return f"SELL;{ticker};{qty}"
+        return None
+
+    def strat(self, stock: Stock) -> str | None:
+        """Décision pilotée par le réseau de neurones entraîné."""
+        features = compute_features(stock)
+        if features is None or self._nn is None:
             return None
 
         X = features.reshape(1, -1)
         decision_idx = self._nn.predict(X)[0]
 
         labels = ["PASS", "BUY", "SELL"]
-        if labels[decision_idx] == "PASS":
+        label = labels[decision_idx]
+        if label == "PASS":
             return None
 
-        qte = int(0.2 * self.wallet / stock.current_price)
-        if qte <= 0: return None
-        return f"{labels[decision_idx]};{stock.ticker};{qte}"
+        if label == "BUY":
+            qty = self._buy_quantity(stock)
+        else:
+            qty = self._held_quantity(stock.ticker)
 
+        if qty <= 0:
+            return None
+        return f"{label};{stock.ticker};{qty}"
 
-    def strat1(self, stock: Stock) -> str | None:
+    def strat_mean_reversion(self, stock: Stock) -> str | None:
+        """Parie sur un retour à la moyenne mobile récente : achète quand le
+        prix décroche sous sa tendance, revend progressivement quand il
+        s'en écarte trop vers le haut (pas de tout-ou-rien)."""
+        prices = stock.historic_price
+        if len(prices) < self.MEAN_WINDOW:
+            return None  # pas assez d'historique pour juger d'une tendance
+
         price = stock.current_price
+        moving_avg = float(np.mean(prices[-self.MEAN_WINDOW:]))
+        if moving_avg <= 0:
+            return None
 
-        if self.portfolio[stock.ticker][1] == -1:
-            qty = int(0.3 * self.wallet // price)
-            if qty > 0: return f"BUY;{stock.ticker};{qty}"
+        deviation = (price - moving_avg) / moving_avg
+        qty_held = self._held_quantity(stock.ticker)
 
-        avg_price = np.mean(stock.historic_price)
-
-        if price > avg_price * (1 + self.tolerance):
-            qty = self.portfolio[stock.ticker][2]
-            if qty > 0: return f"SELL;{stock.ticker};{qty}"
-
-        elif price < avg_price * (1 - self.tolerance):
-            qty = int(0.3 * self.wallet // price)
-            if qty > 0: return f"BUY;{stock.ticker};{qty}"
+        if deviation <= -self.tolerance:
+            qty = self._buy_quantity(stock)
+            if qty > 0:
+                return f"BUY;{stock.ticker};{qty}"
+        elif deviation >= self.tolerance and qty_held > 0:
+            qty = max(1, qty_held // 2)  # prise de profit partielle
+            return f"SELL;{stock.ticker};{qty}"
 
         return None
-    
-    def strat2(self, stock : Stock , price : float) :
-        qty = int(0.2*self.wallet // price)
-        if randint(0,1) == 0 : return f"BUY;{stock.ticker};{qty}"
-        else : return f"SELL;{stock.ticker};{self.portfolio[stock.ticker][2]}"
 
+    def strat_momentum(self, stock: Stock) -> str | None:
+        """Suit la tendance (MACD + variation sur 5 jours) plutôt que de
+        parier contre elle : achète les titres qui accélèrent, sort dès que
+        la dynamique se retourne."""
+        features = compute_features(stock)
+        if features is None:
+            return None
 
-    def trade(self, stock_list : dict[str, Stock], strategie = strat1):
-        """Analyze market status and execute buy/sell decisions. """
+        _, variation_1j, variation_5j, rsi, macd = features
+        qty_held = self._held_quantity(stock.ticker)
+
+        trend_up = macd > 0 and variation_5j > 0
+        trend_down = macd < 0 and variation_5j < 0
+
+        if trend_up and variation_1j > 0 and rsi < 0.8:
+            qty = self._buy_quantity(stock)
+            if qty > 0:
+                return f"BUY;{stock.ticker};{qty}"
+        elif (trend_down or rsi > 0.85) and qty_held > 0:
+            return f"SELL;{stock.ticker};{qty_held}"
+
+        return None
+
+    def strat_rsi_contrarian(self, stock: Stock) -> str | None:
+        """Trade les excès du RSI : achète en zone de survente, vend en
+        zone de surachat. `tolerance` fixe la largeur de la zone neutre."""
+        features = compute_features(stock)
+        if features is None:
+            return None
+
+        _, _, _, rsi, _ = features
+        qty_held = self._held_quantity(stock.ticker)
+
+        oversold = 0.5 - self.tolerance
+        overbought = 0.5 + self.tolerance
+
+        if rsi <= oversold:
+            qty = self._buy_quantity(stock)
+            if qty > 0:
+                return f"BUY;{stock.ticker};{qty}"
+        elif rsi >= overbought and qty_held > 0:
+            qty = max(1, qty_held // 2)  # prise de profit partielle
+            return f"SELL;{stock.ticker};{qty}"
+
+        return None
+
+    STRATEGIES = {
+        "mean_reversion": strat_mean_reversion,
+        "momentum": strat_momentum,
+        "rsi_contrarian": strat_rsi_contrarian,
+        "neural_net": strat,
+    }
+
+    def trade(self, stock_list: dict[str, Stock], strategie=None):
+        """Analyze market status and execute buy/sell decisions."""
+        self.refresh(stock_list)
+        fn = strategie or self.STRATEGIES.get(self.strategy, AI.strat_mean_reversion)
+
         decisions = []
         for ticker, stock in stock_list.items():
-            decision = strategie(self, stock)
-            if decision != "PASS" and decision != None:
+            decision = self._stop_loss_signal(stock) or fn(self, stock)
+            if decision != "PASS" and decision is not None:
                 decisions.append(decision)
         return decisions if decisions else ["PASS"]
-                
+
     def refresh(self, stock_dict: dict[str, Stock]):
         """Refresh the total global value of the AI's portfolio."""
         total_assets = sum(

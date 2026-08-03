@@ -29,13 +29,13 @@ async def main(mode: str = "train",
     await asyncio.gather(
         broker(mode=mode, file=file, fast=fast_str, nb_clients=nb_clients),
         run_client(PORT_ECOUTE_SERVEUR, PORT_ECOUTE_CLIENT,
-                   AI(wallet=1000, portfolio={}, nn=None, tolerance=0.01),
+                   AI(wallet=1000, portfolio={}, nn=None, tolerance=0.05, strategy="mean_reversion"),
                    "agent1", db),
         run_client(PORT_ECOUTE_SERVEUR, PORT_ECOUTE_CLIENT,
-                   AI(wallet=2000, portfolio={}, nn=None, tolerance=0.10),
+                   AI(wallet=1000, portfolio={}, nn=None, tolerance=0.10, strategy="momentum"),
                    "agent2", db),
         run_client(PORT_ECOUTE_SERVEUR, PORT_ECOUTE_CLIENT,
-                   AI(wallet=500, portfolio={}, nn=None, tolerance=0.20),
+                   AI(wallet=1000, portfolio={}, nn=None, tolerance=0.15, strategy="rsi_contrarian"),
                    "agent3", db),
     )
 
