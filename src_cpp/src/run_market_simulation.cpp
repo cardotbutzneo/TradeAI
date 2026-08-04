@@ -30,10 +30,20 @@ bool validate_start_signal(Logger& logger) {
     return signal == "START";
 }
 
+/** Real-time pause after each tick is emitted, before the engine moves on to the next one (see send_ticks). */
+static constexpr std::chrono::milliseconds NORMAL_TICK_DELAY{5000};
+/** Same pause in --fast mode: shorter, but never zero, so a --fast run stays usable with real clients (see rapport.txt, 2026-08-04). */
+static constexpr std::chrono::milliseconds FAST_TICK_DELAY{300};
+
 /**
  * @brief Prints one "TICK;<date>;TICKER:price:volume,..." line to stdout
- *        for every stock that has a price at `current_col` (price != -1).
- * @note Sleeps 100ms per stock unless `args.at("fast") == "true"`.
+ *        for every stock that has a price at `current_col` (price != -1),
+ *        then pauses (NORMAL_TICK_DELAY, or FAST_TICK_DELAY if
+ *        `args.at("fast") == "true"`) before returning.
+ * @note The engine stays fully independent from the clients: this is a flat
+ *       real-time pace, like a real market tick, not a handshake or a wait
+ *       on client acknowledgment. It only bounds how far the engine can run
+ *       ahead of clients that are still deciding on the previous tick.
  */
 static void send_ticks(const FinancialNDArray& matrix,
                        const std::vector<IndexMap>& stock_index,
@@ -47,9 +57,6 @@ static void send_ticks(const FinancialNDArray& matrix,
     cout << "TICK;" << current_date << ";";
 
     for (int i = 0; i < matrix.rows; i++) {
-        if (args.at("fast") != "true")
-            std::this_thread::sleep_for(std::chrono::milliseconds(100));
-
         float price = matrix.data[i * matrix.cols + current_col];
         if (price != -1.0f) {
             string ticker = get_ticker_name(stock_index, i, nb_stocks);
@@ -63,6 +70,8 @@ static void send_ticks(const FinancialNDArray& matrix,
         }
     }
     cout << endl;
+
+    std::this_thread::sleep_for(args.at("fast") == "true" ? FAST_TICK_DELAY : NORMAL_TICK_DELAY);
 }
 
 /**

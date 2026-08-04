@@ -28,7 +28,7 @@ bool validate_start_signal(Logger& logger);
  * @param volumes Per-stock volume aligned with matrix rows.
  * @param nb_stocks Number of distinct tickers.
  * @param nb_dates Unused by the loop itself (kept for signature symmetry with get_price_matrix()).
- * @param args Runtime options (notably `args["fast"]`, which skips the per-tick sleep when "true").
+ * @param args Runtime options (notably `args["fast"]`, which shortens the real-time pause between ticks -- see send_ticks -- rather than skipping it: the engine never waits on clients, but always paces itself in real time so they have a chance to keep up).
  * @param clients[in,out] Registered clients whose portfolios are updated as orders execute.
  * @param logger Destination for debug/error tracing.
  */

@@ -20,6 +20,12 @@ ack_queues: dict[str, asyncio.Queue] = {}  # id → queue d'ACKs
 # broker.py
 clients_attendus = 0  # nombre de clients attendus
 clients_prets = asyncio.Event()  # signal "tous connectés"
+moteur_arrete = False  # mis à True dès que lire_cpp() voit STOP (ou un crash) ;
+                        # évite à handler_ordres de tenter une écriture qu'on
+                        # sait déjà vouée à l'échec (cf. rapport.txt, course
+                        # de fin de run). Ne supprime pas 100% des cas : le
+                        # process peut mourir entre la lecture de ce flag et
+                        # l'écriture, d'où le try/except qui reste en filet.
 
 async def _broadcast(sockets, message):
     """Send `message` to every socket without letting one already-dead/closing
@@ -73,6 +79,17 @@ async def handler_ordres(websocket):
                 # par erreur au tour suivant (désynchronisation permanente).
                 nb_orders = len([o for o in message.split("|") if o])
 
+            if moteur_arrete:
+                # On sait déjà (flag posé par lire_cpp dès "STOP"/crash lu)
+                # que l'écriture échouerait : on l'évite plutôt que de
+                # provoquer un BrokenPipeError pour rien. Réduit la plupart
+                # des cas de la course de fin de run, mais pas 100% d'entre
+                # eux : le process peut aussi mourir dans la fenêtre entre ce
+                # test et l'écriture ci-dessous (cf. try/except restant).
+                logger.debug("Broker", f"Ordre de {agent_id} ignoré, moteur déjà arrêté.")
+                await websocket.send("|".join([f"ACK;{agent_id};REJECT_ENGINE_STOPPED"] * nb_orders))
+                continue
+
             try:
                 process.stdin.write(order_line)
                 process.stdin.flush()
@@ -94,8 +111,9 @@ async def handler_ordres(websocket):
 
 async def broker(cpp_path="./src_cpp/main", mode="train", fast="",
                  file="", nb_clients=1):
-    global process, clients_attendus
+    global process, clients_attendus, moteur_arrete
     clients_attendus = nb_clients
+    moteur_arrete = False
 
     args = [cpp_path, mode]
     if file: args.append(file)
@@ -144,14 +162,17 @@ async def broker(cpp_path="./src_cpp/main", mode="train", fast="",
         # close() flushes any buffered bytes first; if the C++ process already
         # exited (the normal case right after "STOP"), that flush can itself
         # raise BrokenPipeError -- same race as the writes in handler_ordres,
-        # just one step later. The pipe being gone here is expected, not a bug.
+        # just one step later. lire_cpp() only returns once moteur_arrete is
+        # True, so reaching this point with a dead process is the expected
+        # outcome of every normal run, not a warning-worthy event.
         process.stdin.close()
     except (BrokenPipeError, OSError) as e:
-        logger.warn("Broker", f"Fermeture du stdin C++ (déjà terminé) : {e!r}")
+        logger.debug("Broker", f"Fermeture du stdin C++ (déjà terminé) : {e!r}")
     process.wait()
 
 async def lire_cpp():
     """Lit stdout du C++ et trie TICKs et ACKs"""
+    global moteur_arrete
     loop = asyncio.get_event_loop()
     while True:
         line = await loop.run_in_executor(None, process.stdout.readline)
@@ -165,10 +186,12 @@ async def lire_cpp():
             # un arrêt propre la prochaine fois que ça arrive.
             exit_code = process.poll()
             logger.error("Broker", f"Flux C++ interrompu sans STOP (code retour : {exit_code}).")
+            moteur_arrete = True  # posé avant le broadcast (cf. définition du flag plus haut)
             await _broadcast(list(clients_connectes.values()), "STOP")
             break
 
         if line == "STOP":
+            moteur_arrete = True  # posé avant le broadcast (cf. définition du flag plus haut)
             await _broadcast(list(clients_connectes.values()), "STOP")
             break
 
