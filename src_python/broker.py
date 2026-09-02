@@ -5,7 +5,7 @@ import websockets
 import time
 
 from .utils.logger import logger
-from .utils.utils import Return_code
+from .utils.utils import Return_code, BROKER_BUY_FEE, BROKER_SELL_FEE
 
 """broker.py — WebSocket broker for the trading simulation.
 - handler_ticks(websocket): Handles incoming tick data from the C++ process and broadcasts it to connected clients.
@@ -118,6 +118,12 @@ async def broker(cpp_path="./src_cpp/main", mode="train", fast="",
     args = [cpp_path, mode]
     if file: args.append(file)
     args.append(fast)
+    # Python est la seule source de vérité pour ces taux (config/settings.json,
+    # voir utils.py) : transmis au moteur C++ via CLI plutôt que de lui faire
+    # relire le JSON (évite une dépendance/parseur JSON en plus côté C++, et
+    # tout risque de désync entre deux lectures indépendantes du même fichier).
+    args.append(f"--buy-fee={BROKER_BUY_FEE}")
+    args.append(f"--sell-fee={BROKER_SELL_FEE}")
 
     logger.info("Broker", f"{args}")
 

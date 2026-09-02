@@ -3,6 +3,8 @@ from __future__ import annotations
 import numpy as np
 from typing import TYPE_CHECKING
 
+from .utils.utils import BUY_FEE_RATE, SELL_FEE_RATE
+
 if TYPE_CHECKING:
     from .train_AI import NeuralNetwork
 
@@ -52,6 +54,13 @@ class AI:
     STOP_LOSS_PCT    = 0.15   # vente forcée si la position perd 15% depuis l'achat
     MEAN_WINDOW      = 20     # fenêtre glissante pour la moyenne mobile
 
+    # Frais réellement appliqués par le moteur C++ (voir header.h côté C++ et
+    # utils.py côté Python, source de vérité unique) : le BUY ne supporte que
+    # le frais de courtage, le SELL supporte en plus la flat tax française.
+    # Utilisés pour dimensionner les ordres de façon réaliste (cf. _buy_quantity).
+    BUY_FEE_RATE  = BUY_FEE_RATE
+    SELL_FEE_RATE = SELL_FEE_RATE
+
     def __init__(self, wallet: float, portfolio: dict, nn: "NeuralNetwork" | None = None,
                  tolerance: float = 0.20, strategy: str = "mean_reversion"):
         self.wallet = wallet
@@ -80,7 +89,11 @@ class AI:
             return 0
 
         budget = min(self.TRADE_SIZE_PCT * self.wallet, room, self.wallet)
-        return int(budget // price)
+        # Le moteur facture BUY_FEE_RATE en plus du prix (cf. verify_buy côté
+        # C++) : sans en tenir compte ici, un budget calé pile sur le cash
+        # dispo peut dépasser le cash réellement disponible et se faire
+        # rejeter (REJECT_NO_CASH) pour quelques centimes de frais.
+        return int(budget // (price * (1 + self.BUY_FEE_RATE)))
 
     def _stop_loss_signal(self, stock: Stock) -> str | None:
         """Coupe une position perdante avant toute autre décision, comme le

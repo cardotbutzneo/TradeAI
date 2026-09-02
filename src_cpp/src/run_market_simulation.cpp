@@ -80,9 +80,11 @@ static void send_ticks(const FinancialNDArray& matrix,
  *        stock's OrderBook, records the trade (record_trade) and prints an
  *        "ACK;..." line.
  * @details Prints REJECT_INVALID_QTY (qty <= 0) or REJECT_NO_CASH
- *          (verify_buy fails, checking price*qty plus BUY_FEE_RATE only),
+ *          (verify_buy fails, checking price*qty plus BROKER_BUY_FEE only),
  *          otherwise OK;<new cash balance>. The cash actually debited via
- *          record_trade additionally includes Action::compute_penalty.
+ *          record_trade additionally includes Action::compute_penalty. BUY
+ *          orders are not subject to FLAT_TAX_RATE (the French flat tax only
+ *          taxes gains realized at sale).
  */
 static void execute_buy(Client& client,
                         int stock_idx,
@@ -98,7 +100,7 @@ static void execute_buy(Client& client,
     AccountType& account = client.portfolios[DEFAULT_ACCOUNT];
 
     float penalty = stocks[ticker].compute_penalty(qty);
-    float total_cost = stock_price * qty * (1 + BUY_FEE_RATE + penalty);
+    float total_cost = stock_price * qty * (1 + BROKER_BUY_FEE + penalty);
     if (!verify_buy(account, stock_price, static_cast<int>(qty))) {
         cout << "ACK;" << client.id << ";REJECT_NO_CASH|";
         return;
@@ -116,7 +118,9 @@ static void execute_buy(Client& client,
  *        the stock's OrderBook, records the trade (record_trade, net of fee
  *        and Action::compute_penalty) and prints an "ACK;..." line.
  * @details Prints REJECT_INVALID_QTY (qty <= 0), REJECT_NO_SHARES
- *          (verify_sell fails), otherwise OK;<new cash balance>.
+ *          (verify_sell fails), otherwise OK;<new cash balance>. Proceeds are
+ *          reduced by both FLAT_TAX_RATE (hardcoded) and BROKER_SELL_FEE
+ *          (configurable, see header.h).
  */
 static void execute_sell(Client& client,
                          int stock_idx,
@@ -137,7 +141,7 @@ static void execute_sell(Client& client,
     }
 
     float penalty = stocks[ticker].compute_penalty(qty);
-    float total_proceeds = stock_price * qty * (1 - SELL_FEE_RATE - penalty);
+    float total_proceeds = stock_price * qty * (1 - FLAT_TAX_RATE - BROKER_SELL_FEE - penalty);
     Order new_order{"", client.id, OrderType::SELL, (double)stock_price, qty};
     stocks[ticker].order_book.process_order(new_order);
     record_trade(client, DEFAULT_ACCOUNT, ticker, "SELL", stock_price, qty, stock_idx, total_proceeds);

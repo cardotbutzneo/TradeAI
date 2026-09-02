@@ -23,12 +23,22 @@ std::queue<std::string> order_queue;
 /** Guards concurrent access to order_queue between the reader thread and the simulation loop. */
 std::mutex queue_mutex;
 
+/** @copydoc BROKER_BUY_FEE
+ *  Default matches config/settings.json's "broker-fees.buy" default; only used if --buy-fee is omitted. */
+float BROKER_BUY_FEE = 0.001f;
+/** @copydoc BROKER_BUY_FEE
+ *  Default matches config/settings.json's "broker-fees.sell" default; only used if --sell-fee is omitted. */
+float BROKER_SELL_FEE = 0.008f;
+
 /**
- * @brief Parses `argv` into {"mode", "fast", "input"}.
+ * @brief Parses `argv` into {"mode", "fast", "input"} and, as a side effect,
+ *        overrides BROKER_BUY_FEE/BROKER_SELL_FEE from --buy-fee=/--sell-fee=.
  * @details `argv[1]` must be "prod" or "train", otherwise the process exits
  *          with ExitCode::INVALIDE_ARG. Remaining args: "--fast" sets
- *          `args["fast"] = "true"`; the first other argument becomes
- *          `args["input"]`.
+ *          `args["fast"] = "true"`; "--buy-fee=X"/"--sell-fee=X" override the
+ *          broker fee globals (Python is the source of truth for these, see
+ *          src_python/utils/utils.py and broker.py); the first other argument
+ *          becomes `args["input"]`.
  */
 std::map<std::string, std::string> parse_arguments(int argc, char *argv[]) {
     Logger logger;
@@ -49,16 +59,33 @@ std::map<std::string, std::string> parse_arguments(int argc, char *argv[]) {
     args["fast"] = "false";
     args["input"] = "";
 
+    const std::string buy_fee_prefix  = "--buy-fee=";
+    const std::string sell_fee_prefix = "--sell-fee=";
+
     for (int i = 2; i < argc; i++) {
         std::string arg = argv[i];
         if (arg == "--fast") {
             args["fast"] = "true";
+        } else if (arg.rfind(buy_fee_prefix, 0) == 0) {
+            try {
+                BROKER_BUY_FEE = std::stof(arg.substr(buy_fee_prefix.size()));
+            } catch (...) {
+                logger.error("Main", "Invalid --buy-fee value: " + arg);
+            }
+        } else if (arg.rfind(sell_fee_prefix, 0) == 0) {
+            try {
+                BROKER_SELL_FEE = std::stof(arg.substr(sell_fee_prefix.size()));
+            } catch (...) {
+                logger.error("Main", "Invalid --sell-fee value: " + arg);
+            }
         } else if (args["input"].empty()) {
             args["input"] = arg;
         }
     }
 
-    logger.debug("Main", "Mode: " + args["mode"] + " fast: " + args["fast"]);
+    logger.debug("Main", "Mode: " + args["mode"] + " fast: " + args["fast"] +
+                 " buy_fee: " + std::to_string(BROKER_BUY_FEE) +
+                 " sell_fee: " + std::to_string(BROKER_SELL_FEE));
     return args;
 }
 

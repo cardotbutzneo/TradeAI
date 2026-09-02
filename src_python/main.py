@@ -1,4 +1,5 @@
 import asyncio
+import numpy as np
 from .AI import AI
 from .broker import broker
 from .run_client import run_client
@@ -36,17 +37,28 @@ async def main(mode: str = "train",
     # (ça fermait les serveurs WebSocket en cours de route, et les clients
     # encore connectés recevaient une déconnexion 1001 sans aucune trace de
     # la vraie cause). On journalise l'erreur et la simulation continue.
+    TOLERANCE_MIN, TOLERANCE_MAX = 0.05, 0.20
+    tolerance_list = np.linspace(TOLERANCE_MIN, TOLERANCE_MAX, nb_clients) #génère un np.array avec une répartition linéaire de tolérance entre TOLERANCE_MIN et TOLERANCE_MAX
+    # "neural_net" est exclu : cet agent est créé avec nn=None, donc cette
+    # stratégie ne ferait jamais rien (strat() renvoie None sans réseau).
+    strategies = ["mean_reversion", "momentum", "rsi_contrarian"]
+
+    client_tasks = [
+        run_client(
+            PORT_ECOUTE_SERVEUR, PORT_ECOUTE_CLIENT,
+            AI(wallet=1000, portfolio={}, nn=None,
+               tolerance=float(tolerance_list[i]),
+               strategy=strategies[i % len(strategies)]),
+            f"agent{i + 1}", db,  # id unique par client : le broker indexe
+                                   # clients_connectes/ack_queues par agent_id,
+                                   # un id dupliqué écraserait les entrées.
+        )
+        for i in range(nb_clients)
+    ]
+
     results = await asyncio.gather(
         broker(mode=mode, file=file, fast=fast_str, nb_clients=nb_clients),
-        run_client(PORT_ECOUTE_SERVEUR, PORT_ECOUTE_CLIENT,
-                   AI(wallet=1000, portfolio={}, nn=None, tolerance=0.05, strategy="mean_reversion"),
-                   "agent1", db),
-        run_client(PORT_ECOUTE_SERVEUR, PORT_ECOUTE_CLIENT,
-                   AI(wallet=1000, portfolio={}, nn=None, tolerance=0.10, strategy="momentum"),
-                   "agent2", db),
-        run_client(PORT_ECOUTE_SERVEUR, PORT_ECOUTE_CLIENT,
-                   AI(wallet=1000, portfolio={}, nn=None, tolerance=0.15, strategy="rsi_contrarian"),
-                   "agent3", db),
+        *client_tasks,
         return_exceptions=True,
     )
     for result in results:

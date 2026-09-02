@@ -8,10 +8,10 @@
 #include "../include/bourse.h"
 #include "../include/book_order.h"
 
-/** @brief True if `account` has enough cash to buy `quantity` shares at `amount` including BUY_FEE_RATE; false for non-positive amount/quantity. */
+/** @brief True if `account` has enough cash to buy `quantity` shares at `amount` including BROKER_BUY_FEE; false for non-positive amount/quantity. */
 bool verify_buy(const AccountType& account, float amount, int quantity) {
     if (amount <= 0 || quantity <= 0) return false;
-    float total_cost = amount * quantity * (1.0f + BUY_FEE_RATE);
+    float total_cost = amount * quantity * (1.0f + BROKER_BUY_FEE);
     return account.cash >= total_cost;
 }
 
