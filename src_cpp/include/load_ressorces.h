@@ -14,7 +14,8 @@
 /**
  * @brief Parses CLI arguments into an {mode, fast, input} map.
  * @param argv[1] Required: "prod" or "train"; exits the process (INVALIDE_ARG) if missing/invalid.
- * @param argv[2..] Optional: "--fast" (disables per-tick sleep) and an input file path (train mode).
+ * @param argv[2..] Optional: "--fast" (disables per-tick sleep), "--buy-fee=X"/"--sell-fee=X"
+ *        (override BROKER_BUY_FEE/BROKER_SELL_FEE, see header.h) and an input file path (train mode).
  */
 std::map<std::string, std::string> parse_arguments(int argc, char *argv[]);
 /** @brief Blocking loop: reads lines from stdin and pushes them onto order_queue (guarded by queue_mutex). Intended to run on its own thread. */
