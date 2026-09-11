@@ -19,27 +19,27 @@ class Logger:
         self._log = open(log_path, "a", buffering=1)  # buffering=1 = flush par ligne
         self._err = open(err_path, "a", buffering=1)
 
-    def _format(self, level: LogLevel, source: str, msg: str) -> str:
+    def _format(self, level: LogLevel, file: str, func: str, msg: str) -> str:
         ts = datetime.now().strftime("%Y/%m/%d-%H:%M:%S")
-        return f"[{ts}] [{level.value}] [{source}] {msg}"
+        return f"[{ts}] [{level.value}] [{file}] [{func}] {msg}"
 
-    def info(self, source: str, msg: str):
-        line = self._format(LogLevel.INFO, source, msg)
+    def info(self, file: str, func: str, msg: str):
+        line = self._format(LogLevel.INFO, file, func, msg)
         self._log.write(line + "\n")
         print(line, file=sys.stderr)
 
-    def debug(self, source: str, msg: str):
-        line = self._format(LogLevel.DEBUG, source, msg)
+    def debug(self, file: str, func: str, msg: str):
+        line = self._format(LogLevel.DEBUG, file, func, msg)
         self._log.write(line + "\n")
 
-    def warn(self, source: str, msg: str):
-        line = self._format(LogLevel.WARN, source, msg)
+    def warn(self, file: str, func:str, msg: str):
+        line = self._format(LogLevel.WARN, file, func, msg)
         self._log.write(line + "\n")
         self._err.write(line + "\n")
         print(line, file=sys.stderr)
 
-    def error(self, source: str, msg: str):
-        line = self._format(LogLevel.ERROR, source, msg)
+    def error(self, file: str, func:str, msg: str):
+        line = self._format(LogLevel.ERROR, file, func, msg)
         self._err.write(line + "\n")
         print(line, file=sys.stderr)
 

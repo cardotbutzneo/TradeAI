@@ -36,7 +36,7 @@ async def _broadcast(sockets, message):
     results = await asyncio.gather(*[ws.send(message) for ws in sockets], return_exceptions=True)
     for result in results:
         if isinstance(result, Exception):
-            logger.warn("Broker", f"Envoi échoué vers un client déjà déconnecté : {result!r}")
+            logger.warn(__file__, __name__, f"Envoi échoué vers un client déjà déconnecté : {result!r}")
 
 async def handler_ticks(websocket):
     """Connexion en lecture seule pour recevoir les TICKs"""
@@ -51,14 +51,14 @@ async def handler_ordres(websocket):
     init_msg = await websocket.recv()
     agent_id, solde_str = init_msg.split(";")
     solde = float(solde_str)
-    logger.debug("Broker", f"{agent_id=}-{solde=}")
+    logger.debug(__file__, __name__, f"{agent_id=}-{solde=}")
 
     clients_connectes[agent_id] = websocket
     ack_queues[agent_id] = asyncio.Queue()
     valeur_clients[agent_id] = solde
 
     await websocket.send(f"REGISTERED;{agent_id};OK")
-    logger.info("Broker", f"{agent_id} enregistré ({len(clients_connectes)}/{clients_attendus})")
+    logger.info(__file__, __name__, f"{agent_id} enregistré ({len(clients_connectes)}/{clients_attendus})")
 
     # Signal quand tous les clients sont connectés
     if len(clients_connectes) >= clients_attendus:
@@ -86,7 +86,7 @@ async def handler_ordres(websocket):
                 # des cas de la course de fin de run, mais pas 100% d'entre
                 # eux : le process peut aussi mourir dans la fenêtre entre ce
                 # test et l'écriture ci-dessous (cf. try/except restant).
-                logger.debug("Broker", f"Ordre de {agent_id} ignoré, moteur déjà arrêté.")
+                logger.debug(__file__, __name__, f"Ordre de {agent_id} ignoré, moteur déjà arrêté.")
                 await websocket.send("|".join([f"ACK;{agent_id};REJECT_ENGINE_STOPPED"] * nb_orders))
                 continue
 
@@ -97,9 +97,8 @@ async def handler_ordres(websocket):
                 # Le moteur C++ a déjà quitté (ex: ordre arrivé juste après le
                 # dernier tick, une fois "STOP" imprimé) : pas d'ACK possible,
                 # on le signale proprement au client plutôt que de laisser
-                # planter la connexion (ce qui cascadait en ConnectionClosedError
-                # ailleurs, cf. rapport.txt).
-                logger.warn("Broker", f"Écriture vers le C++ impossible pour {agent_id} (moteur arrêté) : {e!r}")
+                # planter la connexion.
+                logger.warn(__file__, __name__, f"Écriture vers le C++ impossible pour {agent_id} (moteur arrêté) : {e!r}")
                 await websocket.send("|".join([f"ACK;{agent_id};REJECT_ENGINE_STOPPED"] * nb_orders))
                 continue
 
@@ -125,41 +124,42 @@ async def broker(cpp_path="./src_cpp/main", mode="train", fast="",
     args.append(f"--buy-fee={BROKER_BUY_FEE}")
     args.append(f"--sell-fee={BROKER_SELL_FEE}")
 
-    logger.info("Broker", f"{args}")
+    logger.info(__file__, __name__, f"{args}")
 
     process = subprocess.Popen(args, stdin=subprocess.PIPE,
                                 stdout=subprocess.PIPE, text=True)
 
     async with websockets.serve(handler_ticks, "127.0.0.1", 8765), \
                websockets.serve(handler_ordres, "127.0.0.1", 8766):
-        logger.info("Broker", f"Attente de {nb_clients} client(s)...")
+        logger.info(__file__, __name__, f"Attente de {nb_clients} client(s)...")
 
         try:
             await asyncio.wait_for(clients_prets.wait(), timeout=10.0)
         except asyncio.TimeoutError:
             logger.error(
-                "Broker",
+                __file__,
+                __name__,
                 "Délai d'attente dépassé : tous les clients ne se sont pas connectés.",
             )
             exit(Return_code.TIMEOUT)
 
         if len(clients_connectes) > 0:
-            logger.info("Broker", "Déclaration des clients au C++...")
+            logger.info(__file__, __name__, "Déclaration des clients au C++...")
             fmt_str = "|".join(
                 [f"{c_id}:{solde}" for c_id, solde in valeur_clients.items()]
             )
             process.stdin.write(f"REGISTER;{fmt_str}\n")
             process.stdin.flush()
         else:
-            logger.error("Broker", "Aucun client connecté. Arret du programme...")
+            logger.error(__file__, __name__, "Aucun client connecté. Arret du programme...")
             return
         
         await clients_prets.wait()
-        logger.debug("Broker", f"Tous les clients connectés, démarrage...")
+        logger.debug(__file__, __name__, f"Tous les clients connectés, démarrage...")
 
-        logger.debug("Broker", "Envoi START au C++")
+        logger.debug(__file__, __name__, "Envoi START au C++")
 
-        logger.debug("Broker", f"process: {process.pid}")
+        logger.debug(__file__, __name__, f"process: {process.pid}")
         process.stdin.write("START\n")
         process.stdin.flush()
         await lire_cpp()
@@ -173,7 +173,7 @@ async def broker(cpp_path="./src_cpp/main", mode="train", fast="",
         # outcome of every normal run, not a warning-worthy event.
         process.stdin.close()
     except (BrokenPipeError, OSError) as e:
-        logger.debug("Broker", f"Fermeture du stdin C++ (déjà terminé) : {e!r}")
+        logger.debug(__file__, __name__, f"Fermeture du stdin C++ (déjà terminé) : {e!r}")
     process.wait()
 
 async def lire_cpp():
@@ -183,7 +183,7 @@ async def lire_cpp():
     while True:
         line = await loop.run_in_executor(None, process.stdout.readline)
         line = line.strip()
-        logger.debug("Broker", f"reçu C++ : '{line}'")
+        logger.debug(__file__, __name__, f"reçu C++ : '{line}'")
 
         if not line:
             # Flux stdout fermé sans ligne "STOP" explicite : le process C++
@@ -191,7 +191,7 @@ async def lire_cpp():
             # normalement. On le journalise pour ne pas confondre ça avec
             # un arrêt propre la prochaine fois que ça arrive.
             exit_code = process.poll()
-            logger.error("Broker", f"Flux C++ interrompu sans STOP (code retour : {exit_code}).")
+            logger.error(__file__, __name__, f"Flux C++ interrompu sans STOP (code retour : {exit_code}).")
             moteur_arrete = True  # posé avant le broadcast (cf. définition du flag plus haut)
             await _broadcast(list(clients_connectes.values()), "STOP")
             break
@@ -216,7 +216,7 @@ async def lire_cpp():
                 if target_id in ack_queues:
                     await ack_queues[target_id].put(sub_ack)
                 else:
-                    logger.info("Broker", f"ACK pour client inconnu : {target_id}")
+                    logger.info(__file__, __name__, f"ACK pour client inconnu : {target_id}")
 
         elif line.startswith("REGISTER;"):
             if clients_ticks:

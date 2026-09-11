@@ -47,28 +47,32 @@ private:
     }
 
     /** @brief Builds a "[timestamp] [level] [source] msg" line. */
-    std::string format(LogLevel level, const std::string& source,
+    std::string format(LogLevel level,
                        const std::string& msg) {
         return "[" + timestamp() + "] "
              + "[" + level_to_str(level) + "] "
-             + "[" + source + "] "
              + msg;
     }
 
     /** @brief Formats and dispatches a line to the log file, the error file (if WARN/ERROR) and stderr. */
-    void write(LogLevel level, const std::string& source,
-               const std::string& msg) {
-        std::string line = format(level, source, msg);
+    void write(LogLevel level,
+           const std::string& file,
+           const std::string& func,
+           const std::string& msg) {
+        std::string context = "[" + file
+                            + " " + func + "] ";
+
+        std::string line_str = format(level, context + msg);
 
         // Toujours dans le log principal
-        if (log_file.is_open()) log_file << line << "\n";
+        if (log_file.is_open()) log_file << line_str << "\n";
 
         // Erreurs et warnings aussi dans err_file
         if (level == LogLevel::ERROR || level == LogLevel::WARN)
-            if (err_file.is_open()) err_file << line << "\n";
+            if (err_file.is_open()) err_file << line_str << "\n";
 
         // Affiche dans stderr pour le terminal
-        std::cerr << line << "\n";
+        std::cerr << line_str << "\n";
     }
 
 public:
@@ -82,20 +86,20 @@ public:
         : log_path(log_path), err_path(err_path) {
         log_file.open(log_path, std::ios::app);
         err_file.open(err_path, std::ios::app);
-        if (!log_file.is_open()) std::cerr << "[Logger] Impossible d'ouvrir " << log_path << "\n";
-        if (!err_file.is_open()) std::cerr << "[Logger] Impossible d'ouvrir " << err_path << "\n";
+        if (!log_file.is_open()) std::cerr << "[" << __FILE__ << " " << __func__ << "] " << "Impossible d'ouvrir : " << log_path << "\n";
+        if (!err_file.is_open()) std::cerr << "[" << __FILE__ << " " << __func__ << "] " << "Impossible d'ouvrir : " << err_path << "\n";
     }
 
     ~Logger() { close(); }
 
-    /** @brief Logs an informational message. @param source Emitting component name. @param msg Message body. */
-    void info (const std::string& source, const std::string& msg) { write(LogLevel::INFO,  source, msg); }
-    /** @brief Logs a warning (also mirrored to the error log). @param source Emitting component name. @param msg Message body. */
-    void warn (const std::string& source, const std::string& msg) { write(LogLevel::WARN,  source, msg); }
-    /** @brief Logs an error (also mirrored to the error log). @param source Emitting component name. @param msg Message body. */
-    void error(const std::string& source, const std::string& msg) { write(LogLevel::ERROR, source, msg); }
-    /** @brief Logs a debug message. @param source Emitting component name. @param msg Message body. */
-    void debug(const std::string& source, const std::string& msg) { write(LogLevel::DEBUG, source, msg); }
+    /** @brief Logs an informational message. @param msg Message body. */
+    void info (const std::string file, const std::string func, const std::string& msg) { write(LogLevel::INFO, file, func, msg); }
+    /** @brief Logs a warning (also mirrored to the error log). @param msg Message body. */
+    void warn (const std::string file, const std::string func, const std::string& msg) { write(LogLevel::WARN, file, func, msg); }
+    /** @brief Logs an error (also mirrored to the error log). @param msg Message body. */
+    void error(const std::string file, const std::string func, const std::string& msg) { write(LogLevel::ERROR, file, func, msg); }
+    /** @brief Logs a debug message. @param msg Message body. */
+    void debug(const std::string file, const std::string func, const std::string& msg) { write(LogLevel::DEBUG, file, func, msg); }
 
     /** @brief Truncates both log files (fresh run) and writes a reset marker. */
     void reset() {
@@ -103,7 +107,7 @@ public:
         err_file.close();
         log_file.open(log_path, std::ios::trunc);  // trunc = écrase
         err_file.open(err_path, std::ios::trunc);
-        info("Logger", "Logs réinitialisés");
+        info(__FILE__, __func__, "Logs réinitialisés");
     }
 
     /** @brief Closes both log file handles if open. Safe to call multiple times. */

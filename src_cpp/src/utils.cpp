@@ -45,13 +45,13 @@ std::map<std::string, std::string> parse_arguments(int argc, char *argv[]) {
     std::map<std::string, std::string> args;
 
     if (argc < 2) {
-        logger.error("C++_Main", "Error: no mode provided.\n Stopping the program...");
+        logger.error(__FILE__, __func__, "Error : no mode provided.\n Stopping the program...");
         exit(static_cast<int>(ExitCode::INVALIDE_ARG));
     }
 
     std::string mode = argv[1];
     if (mode != "prod" && mode != "train") {
-        logger.error("Main", "Invalid parameter: please provide train or prod");
+        logger.error(__FILE__, __func__, "Invalid parameter: please provide train or prod");
         exit(static_cast<int>(ExitCode::INVALIDE_ARG));
     }
 
@@ -70,20 +70,20 @@ std::map<std::string, std::string> parse_arguments(int argc, char *argv[]) {
             try {
                 BROKER_BUY_FEE = std::stof(arg.substr(buy_fee_prefix.size()));
             } catch (...) {
-                logger.error("Main", "Invalid --buy-fee value: " + arg);
+                logger.error(__FILE__, __func__, "Invalid --buy-fee value: " + arg);
             }
         } else if (arg.rfind(sell_fee_prefix, 0) == 0) {
             try {
                 BROKER_SELL_FEE = std::stof(arg.substr(sell_fee_prefix.size()));
             } catch (...) {
-                logger.error("Main", "Invalid --sell-fee value: " + arg);
+                logger.error(__FILE__, __func__, "Invalid --sell-fee value: " + arg);
             }
         } else if (args["input"].empty()) {
             args["input"] = arg;
         }
     }
 
-    logger.debug("Main", "Mode: " + args["mode"] + " fast: " + args["fast"] +
+    logger.debug(__FILE__, __func__, "Mode: " + args["mode"] + " fast: " + args["fast"] +
                  " buy_fee: " + std::to_string(BROKER_BUY_FEE) +
                  " sell_fee: " + std::to_string(BROKER_SELL_FEE));
     return args;
@@ -141,7 +141,7 @@ bool parse_register_line(const std::string& line,
                          int nb_stocks) {
 
     Logger logger;
-    logger.debug("utils-C++", "Ligne recu pour le REGISTER: " + line);
+    logger.debug(__FILE__, __func__, "Ligne recu pour le REGISTER: " + line);
     const std::string prefix = "REGISTER;";
     if (line.rfind(prefix, 0) != 0) return false;
 
@@ -256,12 +256,12 @@ std::unique_ptr<FinancialNDArray> get_price_matrix(const std::map<std::string, s
 
     if (args.at("mode") == "train") {
         if (args.at("input").empty()) {
-            logger.error("Main", "Train mode requires an input file");
+            logger.error(__FILE__, __func__, "Train mode requires an input file");
             return nullptr;
         }
         file_stream.open(args.at("input"));
         if (!file_stream.is_open()) {
-            logger.error("Main", "File not found");
+            logger.error(__FILE__, __func__, "File not found");
             return nullptr;
         }
         source = &file_stream;
@@ -272,7 +272,7 @@ std::unique_ptr<FinancialNDArray> get_price_matrix(const std::map<std::string, s
     std::unique_ptr<FinancialNDArray> matrix = read_file(*source, ",", stock_index, date_index,
                             stocks, volumes, nb_stocks, nb_dates);
     if (!matrix) {
-        logger.error("Main", "CSV file not found or empty");
+        logger.error(__FILE__, __func__, "CSV file not found or empty");
     }
     return matrix;
 }

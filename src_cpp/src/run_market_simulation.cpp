@@ -23,10 +23,10 @@ static const std::string DEFAULT_ACCOUNT = "CTO";
 bool validate_start_signal(Logger& logger) {
     std::string signal;
     if (!std::getline(std::cin, signal)) {
-        logger.error("Main", "Error reading the START signal");
+        logger.error(__FILE__, __func__, "Error reading the START signal");
         return false;
     }
-    logger.debug("Main", "Signal: " + signal);
+    logger.debug(__FILE__, __func__, "Signal: " + signal);
     return signal == "START";
 }
 
@@ -194,7 +194,7 @@ static void process_order_line(const string& order_line,
         if (!(getline(fields_stream, action, ';') &&
               getline(fields_stream, ticker, ';') &&
               getline(fields_stream, qty_str, ';'))) {
-            logger.debug("Main", "[Cpp Debug] malformed order: " + single_order);
+            logger.debug(__FILE__, __func__, "malformed order: " + single_order);
             cout << "ACK;" << client_id << ";REJECT_MALFORMED|";
             continue;
         }
@@ -203,7 +203,7 @@ static void process_order_line(const string& order_line,
         try {
             qty = stoll(qty_str);
         } catch (...) {
-            logger.debug("Main", "[Cpp Debug] invalid quantity: " + qty_str);
+            logger.debug(__FILE__, __func__, "invalid quantity: " + qty_str);
             cout << "ACK;" << client_id << ";REJECT_INVALID_QTY|";
             continue;
         }
@@ -261,7 +261,7 @@ void run_simulation(const FinancialNDArray& matrix,
         while (!order_queue.empty()) {
             std::string order_line = order_queue.front();
             order_queue.pop();
-            logger.debug("Main", "[Cpp Debug] received: " + order_line);
+            logger.debug(__FILE__, __func__, "received: " + order_line);
             process_order_line(order_line, clients, stocks,
                                stock_index, nb_stocks, matrix, j, logger);
         }
