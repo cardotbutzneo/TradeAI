@@ -26,7 +26,7 @@ using namespace std;
 int main(int argc, char *argv[]) {
     Logger logger;
 
-    logger.debug("C++ Main", "C++ started");
+    logger.debug(__FILE__, __func__, "C++ started");
 
     std::map<std::string, std::string> args = parse_arguments(argc, argv);
 
@@ -40,26 +40,26 @@ int main(int argc, char *argv[]) {
     std::unique_ptr<FinancialNDArray> matrix = get_price_matrix(
         args, stock_index, date_index, nb_stocks, nb_dates, stocks, volumes, logger);
     if (!matrix) {
-        logger.error("C++ Main", "Could not build the price matrix");
+        logger.error(__FILE__, __func__, "Could not build the price matrix");
         return static_cast<int>(ExitCode::CONFIG_ERROR);
     }
     
     std::string register_line;
     if (!std::getline(std::cin, register_line)) {
-        logger.error("C++ Main", "Error reading the REGISTER signal");
+        logger.error(__FILE__, __func__, "Error reading the REGISTER signal");
         return static_cast<int>(ExitCode::INVALIDE_ARG);
     }
 
     std::map<std::string, Client> clients;
     if (!parse_register_line(register_line, clients, nb_stocks) || clients.empty()) {
-        logger.error("C++ Main", "Invalid REGISTER signal: " + register_line);
+        logger.error(__FILE__, __func__, "Invalid REGISTER signal: " + register_line);
         return static_cast<int>(ExitCode::INVALIDE_ARG);
     }
-    logger.debug("C++ Main", "Registered " + std::to_string(clients.size()) + " client(s)");
+    logger.debug(__FILE__, __func__, "Registered " + std::to_string(clients.size()) + " client(s)");
     cout << "REGISTER;OK" << endl;
 
     if (!validate_start_signal(logger)) {
-        logger.error("Main", "Invalid signal");
+        logger.error(__FILE__, __func__, "Invalid signal");
         return static_cast<int>(ExitCode::INVALIDE_ARG);
     }
 

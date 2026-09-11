@@ -26,11 +26,11 @@ async def main(mode: str = "train",
     # non-NULL dès le démarrage) et le dashboard affichait un mélange de
     # plusieurs runs au lieu du run en cours.
     db.reset()
-    logger.debug("Main", f"Debug: {DEBUG}")
-    logger.debug("Main", f"[fast] : {fast_str}")
+    logger.debug(__file__, __name__, f"Debug: {DEBUG}")
+    logger.debug(__file__, __name__, f"[fast] : {fast_str}")
 
-    logger.info("Main", "Démarrage broker...")
-    logger.info("Main", "Démarrage clients...")
+    logger.info(__file__, __name__, "Démarrage broker...")
+    logger.info(__file__, __name__, "Démarrage clients...")
 
     # return_exceptions=True : si un agent plante (bug de stratégie, etc.), on
     # ne veut pas que ça annule le broker et les autres agents en plein vol
@@ -63,6 +63,6 @@ async def main(mode: str = "train",
     )
     for result in results:
         if isinstance(result, Exception):
-            logger.error("Main", f"Une tâche s'est terminée en erreur : {result!r}")
+            logger.error(__file__, __name__, f"Une tâche s'est terminée en erreur : {result!r}")
 
     logger.close()

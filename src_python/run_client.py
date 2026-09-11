@@ -11,10 +11,10 @@ def verifier_connexion_cpp(tick, agent_id):
     if tick.startswith("REGISTER;"):
         parts = tick.split(";")
         if parts[1] == "OK":
-            logger.info("Broker", f"Client {agent_id} bien enregistrée aupres du C++")
+            logger.info(__file__, __name__, f"Client {agent_id} bien enregistrée aupres du C++")
             return True
     else :
-        logger.warn("Broker", f"Authentification de {agent_id} aupres du C++ a échoué")
+        logger.warn(__file__, __name__, f"Authentification de {agent_id} aupres du C++ a échoué")
         return False
 
 async def run_client(url_tick: str, url_ordre: str,
@@ -30,10 +30,10 @@ async def run_client(url_tick: str, url_ordre: str,
         confirmation = await ws_ordre.recv()  # attend la confirmation du broker
 
         if confirmation == f"REGISTERED;{agent_id};OK":
-            logger.info(f"{agent_id}", f"Enregistré avec succès auprès du serveur")
+            logger.info(__file__, __name__, f"{agent_id} : Enregistré avec succès auprès du serveur")
             db.register_agent(agent_id, agent.wallet, getattr(agent, "strategy", ""))
         else:
-            logger.info(f"{agent_id}", f"Erreur d'enregistrement : {confirmation}")
+            logger.info(__file__, __name__, f"{agent_id}:" + f"Erreur d'enregistrement : {confirmation}")
 
         
         async for message in ws_tick:
@@ -50,7 +50,7 @@ async def run_client(url_tick: str, url_ordre: str,
 
             parts = message.split(";")
             if len(parts) < 3:
-                logger.warn(agent_id, f"Tick invalide reçu : {message}")
+                logger.warn(__file__, __name__, agent_id + f"Tick invalide reçu : {message}")
                 continue
 
             date = parts[1]
@@ -59,14 +59,14 @@ async def run_client(url_tick: str, url_ordre: str,
                     continue
                 fields = item.split(":")
                 if len(fields) != 3:
-                    logger.warn(agent_id, f"Tick mal formé : {item}")
+                    logger.warn(__file__, __name__, agent_id + f"Tick mal formé : {item}")
                     continue
                 ticker, price_str, volume_str = fields
                 try:
                     price = float(price_str)
                     volume = int(volume_str)
                 except ValueError:
-                    logger.warn(agent_id, f"Tick contient des valeurs invalides : {item}")
+                    logger.warn(__file__, __name__, agent_id + f"Tick contient des valeurs invalides : {item}")
                     continue
 
                 if ticker not in stock_dict:
@@ -80,7 +80,7 @@ async def run_client(url_tick: str, url_ordre: str,
                 db.insert_tick(ticker, price, volume, date)
 
             decisions = agent.trade(stock_dict)
-            logger.info(agent_id, f"Décision : {decisions}")
+            logger.info(__file__, __name__, agent_id + f"Décision : {decisions}")
 
             if decisions == ["PASS"]:
                 await ws_ordre.send("PASS")
@@ -89,11 +89,11 @@ async def run_client(url_tick: str, url_ordre: str,
 
             await ws_ordre.send("|".join(decisions))
             ack = await ws_ordre.recv()
-            logger.info(agent_id, f"ACK reçu : {ack}")
+            logger.info(__file__, __name__, agent_id + f"ACK reçu : {ack}")
 
             await update_portfolio(agent_id, decisions, ack, agent, stock_dict, db, date)
 
-        logger.info(agent_id, f"Fin. Wallet : {agent.wallet:.2f}€")
+        logger.info(__file__, __name__, agent_id + f"Fin. Wallet : {agent.wallet:.2f}€")
         db.mark_finished(agent_id, agent.wallet)
 
 async def update_portfolio(agent_id: str,
@@ -111,7 +111,7 @@ async def update_portfolio(agent_id: str,
     # sur un ordre contamine les autres ordres du même tour.
     ack_segments = ack.split("|")
     if len(ack_segments) != len(decisions):
-        logger.warn(agent_id, f"Décalage ACK/décisions ({len(ack_segments)} ACK pour {len(decisions)} décisions) : {ack}")
+        logger.warn(__file__, __name__, agent_id + f"Décalage ACK/décisions ({len(ack_segments)} ACK pour {len(decisions)} décisions) : {ack}")
 
     for decision, ack_segment in zip(decisions, ack_segments):
         action, stock_symbol, quantity_str = decision.split(";")
@@ -120,12 +120,12 @@ async def update_portfolio(agent_id: str,
 
         parts = ack_segment.split(";")
         if len(parts) < 3:
-            logger.warn(agent_id, f"ACK mal formé : {ack_segment}")
+            logger.warn(__file__, __name__, agent_id + f"ACK mal formé : {ack_segment}")
             continue
         status = parts[2]
 
         if status != "OK":
-            logger.warn(agent_id, f"Ordre rejeté par le moteur : {ack_segment}")
+            logger.warn(__file__, __name__, agent_id + f"Ordre rejeté par le moteur : {ack_segment}")
             db.insert_trade(agent_id, stock_symbol, action, price,
                             quantity, agent.wallet, status=status, date=date)
             continue
@@ -134,10 +134,10 @@ async def update_portfolio(agent_id: str,
             try:
                 agent.wallet = float(parts[3])
             except ValueError:
-                logger.warn(agent_id, f"Impossible de lire le cash dans ACK : {parts[3]}")
+                logger.warn(__file__, __name__, agent_id + f"Impossible de lire le cash dans ACK : {parts[3]}")
 
         if stock_symbol not in stock_dict:
-            logger.warn(agent_id, f"Stock inconnu pour mise à jour : {stock_symbol}")
+            logger.warn(__file__, __name__, agent_id + f"Stock inconnu pour mise à jour : {stock_symbol}")
             continue
 
         stock = stock_dict[stock_symbol]

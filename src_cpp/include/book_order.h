@@ -126,13 +126,8 @@ private:
             Order& sell_order = best_ask_it->second;
 
             // Compute the traded quantity (the minimum of the two)
-            long long traded_qty = std::min(buy_order.quantity, sell_order.quantity);
-
-            // HERE: the trade for 'traded_qty' shares happens at 'sell_order.price'!
-
-            buy_order.quantity -= traded_qty;
-            sell_order.quantity -= traded_qty;
-
+            execute_trade(buy_order, sell_order, sell_order.price);
+            
             if (sell_order.quantity == 0) {
                 OrderBook::asks.erase(best_ask_it); // The sell order is fully executed
             }
@@ -156,10 +151,7 @@ private:
         auto best_bid_it = bids.begin();
         Order& buy_order = best_bid_it->second;
 
-        long long traded_qty = std::min(sell_order.quantity, buy_order.quantity);
-
-        sell_order.quantity -= traded_qty;
-        buy_order.quantity  -= traded_qty;
+        execute_trade(buy_order, sell_order, buy_order.price);
 
         if (buy_order.quantity == 0) {
             bids.erase(best_bid_it);

@@ -72,13 +72,11 @@ python3 dashboard/app.py
 
 ## Known Limitations
 - **`prod` mode** (live stdin feed) is implemented on both sides but not yet exercised end-to-end — stick to `train` mode.
-- **Order-book pricing**: the C++ `OrderBook` matches orders by price-time priority, but executed trades are still recorded at the tick price rather than the matched counterparty price — full order-book-driven pricing is not wired in yet.
 - **Neural-net strategy** (`AI.strat`, backed by `train_AI.NeuralNetwork`) exists but isn't trained/selected by the default run (`src_python/main.py` only spawns `mean_reversion`, `momentum` and `rsi_contrarian` agents).
 
 ## Roadmap
 - [x] Asynchronous networking: multi-client WebSocket broker relaying the C++ engine to N Python agents.
 - [x] Live web dashboard (`dashboard/`), reading the simulation's SQLite database read-only.
-- [ ] Order-book-driven trade pricing (see Known Limitations above).
 - [ ] Wire up and validate `prod` (live stdin) mode.
 - [ ] Train and expose the neural-net strategy through the CLI.
 
